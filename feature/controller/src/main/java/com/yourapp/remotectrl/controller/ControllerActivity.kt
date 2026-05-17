@@ -159,7 +159,9 @@ class ControllerActivity : AppCompatActivity() {
                         Log.i(TAG, "VideoTrack attached to SurfaceViewRenderer (surface ready)")
                     } else {
                         pendingVideoTrack = videoTrack
-                        Log.i(TAG, "VideoTrack saved as pending (surface not ready yet)")
+                        Log.i(TAG, "Surface was not ready. Forcing surface initialization wake-up!")
+                        surfaceInitAttempts = 0
+                        tryInitSurface()
                     }
 
                     isConnected = true

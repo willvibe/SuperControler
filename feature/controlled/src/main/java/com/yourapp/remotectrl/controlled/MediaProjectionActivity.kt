@@ -150,21 +150,9 @@ class MediaProjectionActivity : Activity() {
         if (requestCode == REQUEST_MEDIA_PROJECTION) {
             if (resultCode == RESULT_OK && data != null) {
                 Log.i(TAG, "Permission granted (resultCode=$resultCode)")
+                Log.i(TAG, "Permission granted (resultCode=$resultCode), forwarding raw Intent to Service for WebRTC")
                 MediaProjectionHelper.savePermission(resultCode, data)
                 MediaProjectionHelper.markGranted(this)
-
-                try {
-                    val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                    val projection = mpm.getMediaProjection(resultCode, data)
-                    if (projection != null) {
-                        Log.i(TAG, "MediaProjection created immediately in Activity, storing in holder")
-                        MediaProjectionHolder.set(projection)
-                    } else {
-                        Log.w(TAG, "getMediaProjection returned null in Activity")
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to create MediaProjection in Activity: ${e.message}")
-                }
 
                 val resultIntent = Intent(ACTION_MEDIA_PROJECTION_RESULT).apply {
                     putExtra(EXTRA_RESULT_CODE, resultCode)
