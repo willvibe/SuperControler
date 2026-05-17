@@ -39,7 +39,8 @@
             android:name="com.yourapp.remotectrl.controller.ControllerActivity"
             android:exported="false"
             android:screenOrientation="fullSensor"
-            android:keepScreenOn="true" />
+            android:keepScreenOn="true"
+            android:theme="@style/Theme.SuperControler.Fullscreen" />
 
         <activity
             android:name="com.yourapp.remotectrl.controlled.MediaProjectionActivity"

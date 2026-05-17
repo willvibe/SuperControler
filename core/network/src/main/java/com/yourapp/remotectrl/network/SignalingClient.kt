@@ -55,10 +55,10 @@ class SignalingClient(private val serverUrl: String) {
 
     private fun createOkHttpClient(): OkHttpClient {
         val builder = OkHttpClient.Builder()
-            .pingInterval(20, TimeUnit.SECONDS)
+            .pingInterval(45, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.MILLISECONDS)
-            .writeTimeout(10, TimeUnit.SECONDS)
-            .connectTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .connectTimeout(20, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .dns(object : Dns {
                 override fun lookup(hostname: String): List<InetAddress> {
@@ -269,7 +269,7 @@ class SignalingClient(private val serverUrl: String) {
         heartbeatJob?.cancel()
         heartbeatJob = scope.launch {
             while (isActive && !isDestroyed) {
-                delay(10_000)
+                delay(20_000)
                 try {
                     val ping = JSONObject().apply { put("type", "ping") }
                     val sent = ws.send(ping.toString())
@@ -289,9 +289,9 @@ class SignalingClient(private val serverUrl: String) {
         healthCheckJob?.cancel()
         healthCheckJob = scope.launch {
             while (isActive && !isDestroyed) {
-                delay(10_000)
+                delay(15_000)
                 val elapsed = System.currentTimeMillis() - lastPongTime
-                if (elapsed > 45_000) {
+                if (elapsed > 120_000) {
                     Log.w(TAG, "No message from server for ${elapsed}ms, closing connection")
                     val currentWs = ws
                     if (currentWs != null) {

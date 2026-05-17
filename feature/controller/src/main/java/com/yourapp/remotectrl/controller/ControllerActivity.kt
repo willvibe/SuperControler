@@ -406,6 +406,14 @@ class ControllerActivity : AppCompatActivity() {
                 Log.w(TAG, "SurfaceViewRenderer release error: ${e.message}")
             }
         }
+
+        Log.i(TAG, "ControllerActivity destroyed, disconnecting WebRTC and signaling")
+        val service = ControllerService.getInstance()
+        if (service != null) {
+            service.setActivityCallbacks(null, null, null)
+            service.webRtcClient?.dispose()
+            service.getSignalingClient()?.disconnect()
+        }
     }
 
     companion object {

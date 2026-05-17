@@ -486,6 +486,9 @@ class ControlledService : Service() {
                 if (connected) {
                     wakeUpScreenIfNeeded()
                     sendScreenInfo()
+                } else {
+                    Log.i(TAG, "WebRTC disconnected, turning screen off")
+                    turnScreenOffIfNeeded()
                 }
             }
         }
@@ -784,6 +787,17 @@ class ControlledService : Service() {
             }
         } else {
             Log.i(TAG, "Device is not locked or keyguard not detected")
+        }
+    }
+
+    private fun turnScreenOffIfNeeded() {
+        if (RootManager.isRootAvailable()) {
+            try {
+                com.topjohnwu.superuser.Shell.cmd("input keyevent KEYCODE_POWER").exec()
+                Log.i(TAG, "Screen turned off via root after WebRTC disconnect")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to turn screen off: ${e.message}")
+            }
         }
     }
 
