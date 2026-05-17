@@ -95,9 +95,11 @@ object RootManager {
 
         val callbackInvoked = AtomicBoolean(false)
         val timeoutHandler = Handler(Looper.getMainLooper())
+        var suProcess: Process? = null
         val timeoutRunnable = Runnable {
             if (callbackInvoked.compareAndSet(false, true)) {
                 Log.w("RootManager", "requestRoot timeout (60s), assuming no root")
+                suProcess?.destroy()
                 requestInProgress.set(false)
                 initComplete.set(true)
                 rootAvailable.set(false)
@@ -163,6 +165,7 @@ object RootManager {
                 try {
                     Log.i("RootManager", "Method 3: Runtime.exec(\"su\")...")
                     val process = Runtime.getRuntime().exec("su")
+                    suProcess = process
                     val os = DataOutputStream(process.outputStream)
                     os.writeBytes("id\n")
                     os.flush()

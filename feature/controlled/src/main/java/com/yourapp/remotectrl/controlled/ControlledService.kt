@@ -1,5 +1,6 @@
 package com.yourapp.remotectrl.controlled
 
+import android.app.KeyguardManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -97,16 +98,27 @@ class ControlledService : Service() {
     private var pendingEncH = 0
 
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var networkJob: Job? = null
 
     private var reconnectFailCount = 0
+
+    private var scrollBatchHandler: Handler? = null
+    private var scrollBatchRunnable: Runnable? = null
+    private var pendingScrollDx = 0
+    private var pendingScrollDy = 0
+    private var scrollStartX = 0
+    private var scrollStartY = 0
+    private var isBatchingScroll = false
 
     private fun registerNetworkCallback() {
         val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         networkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: android.net.Network) {
                 Log.i(TAG, "Network available: $network")
-                serviceScope.launch {
-                    delay(1000)
+                networkJob?.cancel()
+                networkJob = serviceScope.launch {
+                    delay(2000)
+                    Log.i(TAG, "Network stabilized: $network, reconnecting...")
                     signalingClient.notifyNetworkChanged()
                     checkAndRecover()
                 }
@@ -631,11 +643,11 @@ class ControlledService : Service() {
                     durationMs
                 )
                 "LONG_PRESS" -> inj.longPress(absX, absY)
-                "SCROLL" -> inj.scroll(
-                    absX, absY,
-                    (dx * screenWidth).toInt(),
-                    (dy * screenHeight).toInt()
-                )
+                "SCROLL" -> {
+                    val absDx = (dx * screenWidth).toInt()
+                    val absDy = (dy * screenHeight).toInt()
+                    batchScroll(inj, absX, absY, absDx, absDy)
+                }
                 "KEY" -> {
                     Log.i(TAG, "Injecting key event: $keyCode")
                     inj.key(keyCode)
@@ -662,6 +674,34 @@ class ControlledService : Service() {
         }
     }
 
+    private fun batchScroll(inj: InputInjector, x: Int, y: Int, dx: Int, dy: Int) {
+        if (!isBatchingScroll) {
+            isBatchingScroll = true
+            scrollStartX = x
+            scrollStartY = y
+            pendingScrollDx = dx
+            pendingScrollDy = dy
+
+            scrollBatchHandler = Handler(Looper.getMainLooper())
+            scrollBatchRunnable = Runnable {
+                if (pendingScrollDx != 0 || pendingScrollDy != 0) {
+                    val endX = scrollStartX + pendingScrollDx
+                    val endY = scrollStartY + pendingScrollDy
+                    inj.scroll(scrollStartX, scrollStartY, endX - scrollStartX, endY - scrollStartY)
+                }
+                isBatchingScroll = false
+                pendingScrollDx = 0
+                pendingScrollDy = 0
+                scrollBatchRunnable = null
+                scrollBatchHandler = null
+            }
+            scrollBatchHandler?.postDelayed(scrollBatchRunnable!!, 80)
+        } else {
+            pendingScrollDx += dx
+            pendingScrollDy += dy
+        }
+    }
+
     private fun wakeUpScreenIfNeeded() {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         val isScreenOn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH) {
@@ -673,41 +713,77 @@ class ControlledService : Service() {
 
         if (!isScreenOn) {
             Log.i(TAG, "Screen is off, attempting to wake up")
+            doWakeUpAndUnlock(pm)
+        } else {
+            Log.i(TAG, "Screen is already on, checking keyguard")
+            dismissKeyguardIfNeeded()
+        }
+    }
 
+    private fun doWakeUpAndUnlock(pm: PowerManager) {
+        if (RootManager.isRootAvailable()) {
+            try {
+                val commands = listOf(
+                    "input keyevent KEYCODE_WAKEUP",
+                    "input keyevent KEYCODE_POWER",
+                    "settings put system screen_brightness 128"
+                )
+                for (cmd in commands) {
+                    com.topjohnwu.superuser.Shell.cmd(cmd).exec()
+                }
+                Log.i(TAG, "Screen wake-up commands executed via root")
+
+                Handler(Looper.getMainLooper()).postDelayed({
+                    dismissKeyguardIfNeeded()
+                }, 800)
+            } catch (e: Exception) {
+                Log.e(TAG, "Root wake-up failed: ${e.message}")
+            }
+        }
+
+        try {
+            val screenWakeLock = pm.newWakeLock(
+                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
+                    PowerManager.ACQUIRE_CAUSES_WAKEUP or
+                    PowerManager.ON_AFTER_RELEASE,
+                "SuperControler::ScreenWakeLock"
+            )
+            screenWakeLock.acquire(5000L)
+            Log.i(TAG, "SCREEN_BRIGHT_WAKE_LOCK acquired for 5s")
+            try {
+                screenWakeLock.release()
+            } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.e(TAG, "WakeLock wake-up failed: ${e.message}")
+        }
+    }
+
+    private fun dismissKeyguardIfNeeded() {
+        val km = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1 && km.isDeviceLocked) {
+            Log.i(TAG, "Device is locked, attempting to dismiss keyguard via root")
             if (RootManager.isRootAvailable()) {
                 try {
+                    val screenW = screenWidth.coerceAtLeast(1080)
+                    val screenH = screenHeight.coerceAtLeast(1920)
+                    val startY = (screenH * 0.75).toInt()
+                    val endY = (screenH * 0.25).toInt()
+                    val centerX = screenW / 2
+
                     val commands = listOf(
-                        "input keyevent KEYCODE_WAKEUP",
-                        "input keyevent KEYCODE_POWER",
-                        "settings put system screen_brightness 128",
-                        "input keyevent KEYCODE_MENU"
+                        "input keyevent KEYCODE_MENU",
+                        "input swipe $centerX $startY $centerX $endY 300"
                     )
                     for (cmd in commands) {
                         com.topjohnwu.superuser.Shell.cmd(cmd).exec()
                     }
-                    Log.i(TAG, "Screen wake-up commands executed via root")
+                    Log.i(TAG, "Keyguard dismiss swipe executed via root")
                 } catch (e: Exception) {
-                    Log.e(TAG, "Root wake-up failed: ${e.message}")
+                    Log.e(TAG, "Root keyguard dismiss failed: ${e.message}")
                 }
             }
-
-            try {
-                val screenWakeLock = pm.newWakeLock(
-                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
-                        PowerManager.ACQUIRE_CAUSES_WAKEUP or
-                        PowerManager.ON_AFTER_RELEASE,
-                    "SuperControler::ScreenWakeLock"
-                )
-                screenWakeLock.acquire(5000L)
-                Log.i(TAG, "SCREEN_BRIGHT_WAKE_LOCK acquired for 5s")
-                try {
-                    screenWakeLock.release()
-                } catch (_: Exception) {}
-            } catch (e: Exception) {
-                Log.e(TAG, "WakeLock wake-up failed: ${e.message}")
-            }
         } else {
-            Log.i(TAG, "Screen is already on, no wake-up needed")
+            Log.i(TAG, "Device is not locked or keyguard not detected")
         }
     }
 

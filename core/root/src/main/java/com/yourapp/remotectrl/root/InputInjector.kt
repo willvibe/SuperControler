@@ -50,18 +50,13 @@ class InputInjector(private val context: Context) {
             Log.w("InputInjector", "inputText ignored - no root")
             return
         }
-        val escaped = shellEscape(text)
-        Thread {
-            try {
-                val result = Shell.cmd("am broadcast -a ADB_INPUT_TEXT --es text $escaped").exec()
-                if (!result.isSuccess) {
-                    inputTextFallback(text)
-                }
-            } catch (e: Exception) {
-                Log.w("InputInjector", "inputText failed: ${e.message}")
+        val safeText = text.replace(" ", "%s")
+        Shell.cmd("input text '$safeText'").submit { result ->
+            if (!result.isSuccess) {
+                Log.w("InputInjector", "input text failed: ${result.err}, falling back to clipboard")
                 inputTextFallback(text)
             }
-        }.start()
+        }
     }
 
     private fun inputTextFallback(text: String) {
@@ -70,13 +65,11 @@ class InputInjector(private val context: Context) {
             val clip = android.content.ClipData.newPlainText("remote_input", text)
             clipboard.setPrimaryClip(clip)
             if (rootAvailable) {
-                Thread {
-                    try {
-                        Shell.cmd("input keyevent 279").exec()
-                    } catch (e: Exception) {
-                        Log.w("InputInjector", "inputTextFallback keyevent failed: ${e.message}")
+                Shell.cmd("input keyevent 279").submit { result ->
+                    if (!result.isSuccess) {
+                        Log.w("InputInjector", "inputTextFallback keyevent failed: ${result.err}")
                     }
-                }.start()
+                }
             }
         } catch (e: Exception) {
             Log.e("InputInjector", "inputText fallback failed: ${e.message}")
@@ -99,17 +92,12 @@ class InputInjector(private val context: Context) {
     }
 
     private fun execRoot(cmd: String) {
-        Thread {
-            try {
-                val result = Shell.cmd(cmd).exec()
-                if (!result.isSuccess) {
-                    Log.w("InputInjector", "Failed: $cmd -> ${result.err}")
-                } else {
-                    Log.i("InputInjector", "Success: $cmd")
-                }
-            } catch (e: Exception) {
-                Log.w("InputInjector", "execRoot failed: $cmd -> ${e.message}")
+        Shell.cmd(cmd).submit { result ->
+            if (!result.isSuccess) {
+                Log.w("InputInjector", "Failed: $cmd -> ${result.err}")
+            } else {
+                Log.d("InputInjector", "Executed successfully: $cmd")
             }
-        }.start()
+        }
     }
 }

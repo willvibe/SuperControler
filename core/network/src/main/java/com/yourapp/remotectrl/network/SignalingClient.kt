@@ -55,7 +55,7 @@ class SignalingClient(private val serverUrl: String) {
 
     private fun createOkHttpClient(): OkHttpClient {
         val builder = OkHttpClient.Builder()
-            .pingInterval(10, TimeUnit.SECONDS)
+            .pingInterval(20, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.MILLISECONDS)
             .writeTimeout(10, TimeUnit.SECONDS)
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -269,7 +269,7 @@ class SignalingClient(private val serverUrl: String) {
         heartbeatJob?.cancel()
         heartbeatJob = scope.launch {
             while (isActive && !isDestroyed) {
-                delay(15_000)
+                delay(10_000)
                 try {
                     val ping = JSONObject().apply { put("type", "ping") }
                     val sent = ws.send(ping.toString())
@@ -291,8 +291,8 @@ class SignalingClient(private val serverUrl: String) {
             while (isActive && !isDestroyed) {
                 delay(10_000)
                 val elapsed = System.currentTimeMillis() - lastPongTime
-                if (elapsed > 90_000) {
-                    Log.w(TAG, "No message from server for ${elapsed}ms")
+                if (elapsed > 45_000) {
+                    Log.w(TAG, "No message from server for ${elapsed}ms, closing connection")
                     val currentWs = ws
                     if (currentWs != null) {
                         try { currentWs.close(1001, "health check timeout") } catch (_: Exception) {}
@@ -377,7 +377,9 @@ class SignalingClient(private val serverUrl: String) {
                 Log.i(TAG, "Device ${if (device.isOnline) "online" else "offline"}: ${device.id}")
                 onDevicesOnline?.invoke(listOf(device))
             }
-            "pong" -> {}
+            "pong" -> {
+                Log.d(TAG, "Server pong received")
+            }
             else -> {
                 Log.w(TAG, "Unhandled message type: ${msg.optString("type")}")
             }
@@ -386,23 +388,28 @@ class SignalingClient(private val serverUrl: String) {
 
     private fun handleRelayMessage(msg: JSONObject) {
         val fromId = msg.optString("from", "")
-        val innerPayload = msg.optJSONObject("payload")
 
-        if (innerPayload == null) {
-            Log.w(TAG, "Relay message has no payload object")
+        var payloadStr = ""
+
+        val directString = msg.optString("payload", "")
+        if (directString.isNotEmpty() && directString.startsWith("{")) {
+            payloadStr = directString
+        } else {
+            val innerPayload = msg.optJSONObject("payload")
+            if (innerPayload != null) {
+                payloadStr = innerPayload.optString("payload", "")
+            }
+        }
+
+        if (payloadStr.isEmpty()) {
+            Log.w(TAG, "Relay message has no valid payload. Raw msg: $msg")
             return
         }
 
-        val payloadStr = innerPayload.optString("payload", "")
         val payloadObj = try {
-            if (payloadStr.isNotEmpty()) JSONObject(payloadStr) else null
+            JSONObject(payloadStr)
         } catch (e: Exception) {
-            Log.w(TAG, "Relay inner payload is not valid JSON: ${payloadStr.take(100)}")
-            null
-        }
-
-        if (payloadObj == null) {
-            Log.w(TAG, "Relay message has no parseable inner payload")
+            Log.w(TAG, "Relay payload is not valid JSON: ${payloadStr.take(100)}")
             return
         }
 
@@ -417,15 +424,11 @@ class SignalingClient(private val serverUrl: String) {
         when (signalType) {
             "sdp-offer" -> {
                 val sdp = payloadObj.optString("sdp", "")
-                if (sdp.isNotEmpty()) {
-                    onSdpOffer?.invoke(fromId, "offer", sdp)
-                }
+                if (sdp.isNotEmpty()) onSdpOffer?.invoke(fromId, "offer", sdp)
             }
             "sdp-answer" -> {
                 val sdp = payloadObj.optString("sdp", "")
-                if (sdp.isNotEmpty()) {
-                    onSdpAnswer?.invoke(fromId, "answer", sdp)
-                }
+                if (sdp.isNotEmpty()) onSdpAnswer?.invoke(fromId, "answer", sdp)
             }
             "ice-candidate" -> {
                 val sdpMid = payloadObj.optString("sdp_mid", "")
