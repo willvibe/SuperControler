@@ -413,7 +413,7 @@ class ControlledService : Service() {
         Log.i(TAG, "setMediaProjectionResult() code=$code")
         projectionRequestInProgress = false
         MediaProjectionHelper.savePermission(code, data)
-        startWebRtcCapture(data, null)
+        startWebRtcCapture(data, pendingSdpFromId)
         processPendingSdp()
     }
 
@@ -461,8 +461,7 @@ class ControlledService : Service() {
                 startForeground(
                     NOTIFICATION_ID,
                     buildNotification("屏幕共享中"),
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or
-                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
                 )
                 Log.i(TAG, "startForeground() upgraded with MEDIA_PROJECTION type")
             } catch (e: Exception) {
@@ -657,8 +656,12 @@ class ControlledService : Service() {
             return
         }
 
-        val absX = (x * screenWidth).toInt()
-        val absY = (y * screenHeight).toInt()
+        val metrics = resources.displayMetrics
+        val currentWidth = metrics.widthPixels
+        val currentHeight = metrics.heightPixels
+
+        val absX = (x * currentWidth).toInt()
+        val absY = (y * currentHeight).toInt()
 
         try {
             when (typeStr) {
@@ -668,14 +671,14 @@ class ControlledService : Service() {
                 }
                 "SWIPE" -> inj.swipe(
                     absX, absY,
-                    (x2 * screenWidth).toInt(),
-                    (y2 * screenHeight).toInt(),
+                    (x2 * currentWidth).toInt(),
+                    (y2 * currentHeight).toInt(),
                     durationMs
                 )
                 "LONG_PRESS" -> inj.longPress(absX, absY)
                 "SCROLL" -> {
-                    val absDx = (dx * screenWidth).toInt()
-                    val absDy = (dy * screenHeight).toInt()
+                    val absDx = (dx * currentWidth).toInt()
+                    val absDy = (dy * currentHeight).toInt()
                     batchScroll(inj, absX, absY, absDx, absDy)
                 }
                 "KEY" -> {

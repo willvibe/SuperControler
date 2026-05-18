@@ -241,6 +241,12 @@ class ControllerActivity : AppCompatActivity() {
                 }
                 override fun onFrameResolutionChanged(w: Int, h: Int, rotation: Int) {
                     Log.i(TAG, "Frame resolution changed: ${w}x${h} rotation=$rotation")
+                    runOnUiThread {
+                        val actualW = if (rotation % 180 == 0) w else h
+                        val actualH = if (rotation % 180 == 0) h else w
+                        remoteWidth = actualW
+                        remoteHeight = actualH
+                    }
                 }
             })
             surfaceViewRenderer.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
@@ -552,20 +558,21 @@ class ControllerActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+
+        pendingVideoTrack?.removeSink(surfaceViewRenderer)
+        pendingVideoTrack = null
+        currentVideoTrack?.removeSink(surfaceViewRenderer)
+        currentVideoTrack = null
+        if (surfaceInitialized) {
+            try {
+                surfaceViewRenderer.release()
+            } catch (e: Exception) {
+                Log.w(TAG, "SurfaceViewRenderer release error: ${e.message}")
+            }
+        }
+
         serviceScope.launch {
             withContext(Dispatchers.IO) {
-                pendingVideoTrack?.removeSink(surfaceViewRenderer)
-                pendingVideoTrack = null
-                currentVideoTrack?.removeSink(surfaceViewRenderer)
-                currentVideoTrack = null
-                if (surfaceInitialized) {
-                    try {
-                        surfaceViewRenderer.release()
-                    } catch (e: Exception) {
-                        Log.w(TAG, "SurfaceViewRenderer release error: ${e.message}")
-                    }
-                }
-
                 Log.i(TAG, "ControllerActivity destroyed, disconnecting WebRTC and signaling")
                 val service = ControllerService.getInstance()
                 if (service != null) {
