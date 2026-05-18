@@ -473,7 +473,9 @@ class ControllerService : Service() {
         webRtcClient = null
         pendingTargetId = null
         isConnecting = false
+        signalingClient?.resetForReconnect()
         ConnectionState.reset("controller")
+        setActivityCallbacks(null, null, null)
     }
 
     private fun doConnectToDevice() {

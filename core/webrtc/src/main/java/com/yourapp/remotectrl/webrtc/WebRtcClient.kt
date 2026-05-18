@@ -511,6 +511,10 @@ class WebRtcClient(
             videoSource?.dispose()
         } catch (_: Exception) {}
         videoSource = null
+
+        try {
+            localVideoTrack?.dispose()
+        } catch (_: Exception) {}
         localVideoTrack = null
 
         try {

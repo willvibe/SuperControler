@@ -499,8 +499,14 @@ class ControlledService : Service() {
                 } else {
                     Log.i(TAG, "WebRTC disconnected, turning screen off and resetting state")
                     turnScreenOffIfNeeded()
+                    webRtcClient?.dispose()
+                    webRtcClient = null
                     videoCaptureStarted = false
+                    projectionRequestInProgress = false
+                    pendingIceCandidates.clear()
+                    pendingSdpFromId = null
                     MediaProjectionHelper.clearCachedPermission()
+                    serviceScope.launch { signalingClient.connect(DeviceIdManager.getDeviceId(this@ControlledService)) }
                 }
             }
         }
@@ -623,8 +629,13 @@ class ControlledService : Service() {
             webRtcClient = null
             videoCaptureStarted = false
             projectionRequestInProgress = false
-            ConnectionState.reset("controlled")
+            pendingIceCandidates.clear()
+            pendingSdpFromId = null
+            pendingSdpContent = null
+            pendingSdpType = null
             MediaProjectionHelper.clearCachedPermission()
+            ConnectionState.reset("controlled")
+            serviceScope.launch { signalingClient.connect(DeviceIdManager.getDeviceId(this@ControlledService)) }
             updateNotification("已注册，等待控制")
             return
         }
@@ -661,9 +672,13 @@ class ControlledService : Service() {
             return
         }
 
-        val metrics = resources.displayMetrics
-        val currentWidth = metrics.widthPixels
-        val currentHeight = metrics.heightPixels
+        val displayManager = getSystemService(Context.DISPLAY_SERVICE) as android.hardware.display.DisplayManager
+        val display = displayManager.getDisplay(android.view.Display.DEFAULT_DISPLAY)
+        val realMetrics = android.util.DisplayMetrics()
+        display?.getRealMetrics(realMetrics)
+
+        val currentWidth = realMetrics.widthPixels
+        val currentHeight = realMetrics.heightPixels
 
         val absX = (x * currentWidth).toInt()
         val absY = (y * currentHeight).toInt()
@@ -838,14 +853,12 @@ class ControlledService : Service() {
 
     private fun calcEncodeSize(w: Int, h: Int, maxLong: Int): Pair<Int, Int> {
         val ratio = maxLong.toFloat() / maxOf(w, h)
-        if (ratio >= 1f) return Pair(
-            maxOf((w / 16) * 16, 128),
-            maxOf((h / 16) * 16, 128)
-        )
-        return Pair(
-            maxOf((w * ratio).toInt().floorTo16(), 128),
-            maxOf((h * ratio).toInt().floorTo16(), 128)
-        )
+        if (ratio >= 1f) {
+            return Pair(w - w % 2, h - h % 2)
+        }
+        val targetW = (w * ratio).toInt()
+        val targetH = (h * ratio).toInt()
+        return Pair(targetW - targetW % 2, targetH - targetH % 2)
     }
 
     private fun Int.floorTo16() = (this / 16) * 16
