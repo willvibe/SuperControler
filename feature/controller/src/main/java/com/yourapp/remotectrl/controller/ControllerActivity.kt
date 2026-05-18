@@ -19,6 +19,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import org.json.JSONObject
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
@@ -571,19 +572,19 @@ class ControllerActivity : AppCompatActivity() {
             }
         }
 
-        serviceScope.launch {
-            withContext(Dispatchers.IO) {
+        val service = ControllerService.getInstance()
+        if (service != null && isFinishing) {
+            service.setActivityCallbacks(null, null, null)
+            service.activityScreenInfoCallback = null
+
+            lifecycleScope.launch(Dispatchers.IO) {
                 Log.i(TAG, "ControllerActivity destroyed, disconnecting WebRTC and signaling")
-                val service = ControllerService.getInstance()
-                if (service != null && isFinishing) {
-                    service.setActivityCallbacks(null, null, null)
-                    service.webRtcClient?.dispose()
-                    service.webRtcClient = null
-                    service.getSignalingClient()?.resetForReconnect()
-                    service.disconnectWebRtcAndReset()
-                }
+                service.disconnectWebRtcAndReset()
+                service.getSignalingClient()?.resetForReconnect()
             }
         }
+
+        serviceScope.cancel()
     }
 
     companion object {

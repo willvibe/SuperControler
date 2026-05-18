@@ -153,12 +153,12 @@ class ControlledService : Service() {
                 startForeground(
                     NOTIFICATION_ID,
                     buildNotification("正在启动..."),
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
                 )
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForeground(NOTIFICATION_ID, buildNotification("正在启动..."))
             }
-            Log.i(TAG, "startForeground() called with MEDIA_PROJECTION")
+            Log.i(TAG, "startForeground() called with SPECIAL_USE")
         } catch (e: Exception) {
             Log.e(TAG, "startForeground() failed: ${e.javaClass.simpleName} - ${e.message}")
         }
