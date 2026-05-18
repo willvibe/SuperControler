@@ -56,7 +56,7 @@ class ControllerService : Service() {
     private var myDeviceId: String = ""
 
     var webRtcClient: WebRtcClient? = null
-        private set
+        internal set
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var watchdogJob: Job? = null
@@ -458,12 +458,22 @@ class ControllerService : Service() {
                    myState == ConnectionState.STATUS_IDLE) {
             Log.w(TAG, "Not registered yet (state=$myState), queuing connection request")
         } else if (myState == ConnectionState.STATUS_CONNECTED) {
-            Log.w(TAG, "Already connected, reconnecting to new target")
+            Log.w(TAG, "Already connected, disconnecting old and reconnecting to new target")
+            disconnectWebRtcAndReset()
             doConnectToDevice()
         } else {
             Log.w(TAG, "Unexpected state $myState, attempting connect anyway")
             doConnectToDevice()
         }
+    }
+
+    fun disconnectWebRtcAndReset() {
+        Log.i(TAG, "disconnectWebRtcAndReset() called")
+        webRtcClient?.dispose()
+        webRtcClient = null
+        pendingTargetId = null
+        isConnecting = false
+        ConnectionState.reset("controller")
     }
 
     private fun doConnectToDevice() {

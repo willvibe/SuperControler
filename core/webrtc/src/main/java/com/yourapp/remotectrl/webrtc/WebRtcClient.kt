@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjection
 import android.util.Log
+import org.json.JSONObject
 import org.webrtc.*
 import java.nio.ByteBuffer
 import java.util.concurrent.CopyOnWriteArrayList
@@ -127,8 +128,12 @@ class WebRtcClient(
         videoSource = factory.createVideoSource(true)
         localVideoTrack = factory.createVideoTrack(VIDEO_TRACK_ID, videoSource)
         localVideoTrack?.setEnabled(true)
-        peerConnection?.addTrack(localVideoTrack)
-        Log.i(TAG, "VideoTrack created and added to PeerConnection (before any SDP negotiation)")
+
+        peerConnection?.addTransceiver(
+            localVideoTrack,
+            RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_ONLY)
+        )
+        Log.i(TAG, "VideoTrack added as SEND_ONLY transceiver")
     }
 
     fun setupAsController(targetId: String) {
@@ -338,6 +343,22 @@ class WebRtcClient(
         }
     }
 
+    fun disconnectPeer() {
+        if (isDisposed) return
+        Log.i(TAG, "disconnectPeer() - sending disconnect message to peer")
+        try {
+            val disconnectMsg = JSONObject().apply {
+                put("type", "DISCONNECT")
+            }.toString()
+            sendDataChannelMessage(disconnectMsg)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to send disconnect message: ${e.message}")
+        }
+        try {
+            peerConnection?.close()
+        } catch (_: Exception) {}
+    }
+
     private fun createOffer() {
         if (isDisposed) return
         val pc = peerConnection ?: return
@@ -377,10 +398,7 @@ class WebRtcClient(
         if (isDisposed) return
         val pc = peerConnection ?: return
 
-        val constraints = MediaConstraints().apply {
-            mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "false"))
-        }
+        val constraints = MediaConstraints()
 
         pc.createAnswer(object : SdpObserver {
             override fun onCreateSuccess(sdp: SessionDescription?) {

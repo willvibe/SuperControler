@@ -557,6 +557,25 @@ class SignalingClient(private val serverUrl: String) {
         }
     }
 
+    fun resetForReconnect() {
+        Log.i(TAG, "resetForReconnect() called")
+        wsGeneration++
+        reconnectJob?.cancel()
+        reconnectJob = null
+        heartbeatJob?.cancel()
+        heartbeatJob = null
+        healthCheckJob?.cancel()
+        healthCheckJob = null
+        val currentWs = ws
+        ws = null
+        if (currentWs != null) {
+            try { currentWs.close(1000, "reset") } catch (_: Exception) {}
+        }
+        peerId = ""
+        pendingConnectTargetId = null
+        reconnectAttempts = 0
+    }
+
     fun notifyNetworkChanged() {
         if (isDestroyed) return
         Log.i(TAG, "notifyNetworkChanged: Network changed, forcing reconnect...")

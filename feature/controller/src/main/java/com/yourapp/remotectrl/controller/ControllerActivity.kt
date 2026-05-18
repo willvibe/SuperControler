@@ -16,6 +16,9 @@ import com.yourapp.remotectrl.webrtc.WebRtcClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import org.json.JSONObject
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
@@ -45,6 +48,9 @@ class ControllerActivity : AppCompatActivity() {
     private var pendingVideoTrack: VideoTrack? = null
     private var surfaceInitialized = false
     @Volatile private var isSurfaceReady = false
+
+    private var controlBarView: View? = null
+    private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private val webRtcClient: WebRtcClient?
         get() = ControllerService.getInstance()?.webRtcClient
@@ -83,12 +89,14 @@ class ControllerActivity : AppCompatActivity() {
             Gravity.CENTER
         ))
 
-        val controlBar = buildControlBar()
-        layout.addView(controlBar, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            dp(56),
-            Gravity.BOTTOM
-        ))
+        controlBarView = buildDraggableControlBar()
+        layout.addView(controlBarView, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            dp(48),
+            Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        ).apply {
+            bottomMargin = dp(16)
+        })
 
         setContentView(layout)
 
@@ -107,6 +115,15 @@ class ControllerActivity : AppCompatActivity() {
     private fun connectToDevice() {
         Log.i(TAG, "connectToDevice() targetId=$targetId")
         updateStatus("正在连接服务器...")
+
+        isConnected = false
+        surfaceInitialized = false
+        isSurfaceReady = false
+        surfaceInitAttempts = 0
+        currentVideoTrack?.removeSink(surfaceViewRenderer)
+        currentVideoTrack = null
+        pendingVideoTrack?.removeSink(surfaceViewRenderer)
+        pendingVideoTrack = null
 
         val service = ControllerService.getInstance()
         if (service != null) {
@@ -194,6 +211,9 @@ class ControllerActivity : AppCompatActivity() {
     private var surfaceInitAttempts = 0
 
     private fun initSurfaceViewRendererEarly() {
+        surfaceInitialized = false
+        isSurfaceReady = false
+        surfaceInitAttempts = 0
         tryInitSurface()
     }
 
@@ -217,6 +237,7 @@ class ControllerActivity : AppCompatActivity() {
             surfaceViewRenderer.init(eglCtx, object : RendererCommon.RendererEvents {
                 override fun onFirstFrameRendered() {
                     Log.i(TAG, "SurfaceViewRenderer first frame rendered")
+                    runOnUiThread { surfaceViewRenderer.setBackgroundColor(android.graphics.Color.TRANSPARENT) }
                 }
                 override fun onFrameResolutionChanged(w: Int, h: Int, rotation: Int) {
                     Log.i(TAG, "Frame resolution changed: ${w}x${h} rotation=$rotation")
@@ -224,6 +245,7 @@ class ControllerActivity : AppCompatActivity() {
             })
             surfaceViewRenderer.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
             surfaceViewRenderer.setEnableHardwareScaler(true)
+            surfaceViewRenderer.setZOrderMediaOverlay(true)
             surfaceInitialized = true
             isSurfaceReady = true
             Log.i(TAG, "SurfaceViewRenderer initialized (surfaceReady=true)")
@@ -359,16 +381,42 @@ class ControllerActivity : AppCompatActivity() {
         }.toString()
     }
 
-    private fun buildControlBar(): View {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.argb(180, 0, 0, 0))
-            gravity = Gravity.CENTER
+    private fun buildDraggableControlBar(): View {
+        val container = FrameLayout(this)
+        container.setBackgroundColor(Color.argb(160, 40, 40, 40))
 
-            addIconButton("◀") { sendControlEventJson(newKeyEventJson(android.view.KeyEvent.KEYCODE_BACK)) }
-            addIconButton("⌂") { sendControlEventJson(newKeyEventJson(android.view.KeyEvent.KEYCODE_HOME)) }
-            addIconButton("▣") { sendControlEventJson(newKeyEventJson(android.view.KeyEvent.KEYCODE_APP_SWITCH)) }
+        val buttonRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
         }
+
+        buttonRow.addIconButton("◀") { sendControlEventJson(newKeyEventJson(android.view.KeyEvent.KEYCODE_BACK)) }
+        buttonRow.addIconButton("⌂") { sendControlEventJson(newKeyEventJson(android.view.KeyEvent.KEYCODE_HOME)) }
+        buttonRow.addIconButton("▣") { sendControlEventJson(newKeyEventJson(android.view.KeyEvent.KEYCODE_APP_SWITCH)) }
+        buttonRow.addIconButton("✕") { disconnectAndFinish() }
+
+        container.addView(buttonRow, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            Gravity.CENTER
+        ))
+
+        val dragHandle = TextView(this).apply {
+            text = "⋮⋮"
+            textSize = 12f
+            setTextColor(Color.argb(180, 255, 255, 255))
+            gravity = Gravity.CENTER
+            setPadding(dp(4), 0, dp(4), 0)
+        }
+        container.addView(dragHandle, FrameLayout.LayoutParams(
+            dp(24),
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            Gravity.START or Gravity.CENTER_VERTICAL
+        ))
+
+        setupDragBehavior(container)
+
+        return container
     }
 
     private fun LinearLayout.addIconButton(label: String, onClick: () -> Unit) {
@@ -376,9 +424,118 @@ class ControllerActivity : AppCompatActivity() {
             text = label
             textSize = 20f
             setTextColor(Color.WHITE)
-            setPadding(dp(16), dp(8), dp(16), dp(8))
+            setPadding(dp(12), dp(8), dp(12), dp(8))
             setOnClickListener { onClick() }
         })
+    }
+
+    private fun setupDragBehavior(view: View) {
+        var dX = 0f
+        var dY = 0f
+        var startX = 0f
+        var startY = 0f
+        var isDragging = false
+        var longPressTriggered = false
+        val longPressHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+        val startLongPressCheck = Runnable {
+            longPressTriggered = true
+            isDragging = true
+            view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+            Log.i(TAG, "Long press detected, drag mode activated")
+        }
+
+        view.setOnTouchListener { v, event ->
+            val parent = v.parent as? FrameLayout
+            if (parent == null) {
+                return@setOnTouchListener false
+            }
+
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    dX = v.x - event.rawX
+                    dY = v.y - event.rawY
+                    startX = event.rawX
+                    startY = event.rawY
+                    isDragging = false
+                    longPressTriggered = false
+                    longPressHandler.postDelayed(startLongPressCheck, 400)
+                    v.parent.requestDisallowInterceptTouchEvent(true)
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val moveDist = kotlin.math.hypot(event.rawX - startX, event.rawY - startY)
+                    if (moveDist > 15f && !longPressTriggered) {
+                        longPressHandler.removeCallbacks(startLongPressCheck)
+                    }
+                    if (isDragging || longPressTriggered) {
+                        isDragging = true
+                        val newX = (event.rawX + dX).coerceIn(0f, (parent.width - v.width).toFloat().coerceAtLeast(0f))
+                        val newY = (event.rawY + dY).coerceIn(0f, (parent.height - v.height).toFloat().coerceAtLeast(0f))
+                        v.x = newX
+                        v.y = newY
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    longPressHandler.removeCallbacks(startLongPressCheck)
+                    v.parent.requestDisallowInterceptTouchEvent(false)
+                    val wasDragging = isDragging
+                    isDragging = false
+                    longPressTriggered = false
+                    if (!wasDragging) {
+                        v.performClick()
+                    }
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    longPressHandler.removeCallbacks(startLongPressCheck)
+                    v.parent.requestDisallowInterceptTouchEvent(false)
+                    isDragging = false
+                    longPressTriggered = false
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun disconnectAndFinish() {
+        Log.i(TAG, "User requested disconnect and exit")
+        val service = ControllerService.getInstance() ?: run {
+            finish()
+            return
+        }
+
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                try {
+                    Log.i(TAG, "Sending disconnect message to peer...")
+                    service.webRtcClient?.disconnectPeer()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error sending disconnect message: ${e.message}")
+                }
+
+                try {
+                    service.webRtcClient?.dispose()
+                    service.webRtcClient = null
+                    Log.i(TAG, "WebRTC disposed successfully")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error disposing WebRTC: ${e.message}")
+                }
+
+                try {
+                    service.getSignalingClient()?.resetForReconnect()
+                    Log.i(TAG, "Signaling client reset for reconnect")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error resetting signaling: ${e.message}")
+                }
+
+                service.disconnectWebRtcAndReset()
+                service.setActivityCallbacks(null, null, null)
+            }
+            finish()
+        }
     }
 
     private fun dp(dp: Int) = (dp * resources.displayMetrics.density).toInt()
@@ -395,24 +552,30 @@ class ControllerActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        pendingVideoTrack?.removeSink(surfaceViewRenderer)
-        pendingVideoTrack = null
-        currentVideoTrack?.removeSink(surfaceViewRenderer)
-        currentVideoTrack = null
-        if (surfaceInitialized) {
-            try {
-                surfaceViewRenderer.release()
-            } catch (e: Exception) {
-                Log.w(TAG, "SurfaceViewRenderer release error: ${e.message}")
-            }
-        }
+        serviceScope.launch {
+            withContext(Dispatchers.IO) {
+                pendingVideoTrack?.removeSink(surfaceViewRenderer)
+                pendingVideoTrack = null
+                currentVideoTrack?.removeSink(surfaceViewRenderer)
+                currentVideoTrack = null
+                if (surfaceInitialized) {
+                    try {
+                        surfaceViewRenderer.release()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "SurfaceViewRenderer release error: ${e.message}")
+                    }
+                }
 
-        Log.i(TAG, "ControllerActivity destroyed, disconnecting WebRTC and signaling")
-        val service = ControllerService.getInstance()
-        if (service != null) {
-            service.setActivityCallbacks(null, null, null)
-            service.webRtcClient?.dispose()
-            service.getSignalingClient()?.disconnect()
+                Log.i(TAG, "ControllerActivity destroyed, disconnecting WebRTC and signaling")
+                val service = ControllerService.getInstance()
+                if (service != null) {
+                    service.setActivityCallbacks(null, null, null)
+                    service.webRtcClient?.dispose()
+                    service.webRtcClient = null
+                    service.getSignalingClient()?.resetForReconnect()
+                    service.disconnectWebRtcAndReset()
+                }
+            }
         }
     }
 

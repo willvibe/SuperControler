@@ -93,6 +93,9 @@ class ControlledService : Service() {
     private var pendingSdpContent: String? = null
     private var pendingSdpFromId: String? = null
 
+    private data class PendingIceCandidate(val sdpMid: String, val sdpMLineIndex: Int, val candidate: String)
+    private val pendingIceCandidates = mutableListOf<PendingIceCandidate>()
+
     private var pendingMediaProjectionIntent: Intent? = null
     private var pendingEncW = 0
     private var pendingEncH = 0
@@ -428,6 +431,14 @@ class ControlledService : Service() {
                 webRtcClient?.peerId = fromId
             }
             webRtcClient?.onRemoteSdp(sdpType, sdpContent)
+
+            if (pendingIceCandidates.isNotEmpty()) {
+                Log.i(TAG, "Flushing ${pendingIceCandidates.size} queued remote ICE candidates")
+                pendingIceCandidates.forEach {
+                    webRtcClient?.onRemoteIceCandidate(it.sdpMid, it.sdpMLineIndex, it.candidate)
+                }
+                pendingIceCandidates.clear()
+            }
         } else {
             Log.w(TAG, "processPendingSdp: webRtcClient still null, dropping SDP")
         }
@@ -572,7 +583,12 @@ class ControlledService : Service() {
 
         signalingClient.onIceCandidate = { fromId, sdpMid, sdpMLineIndex, candidate ->
             Log.d(TAG, "onIceCandidate: fromId=$fromId, sdpMid=$sdpMid")
-            webRtcClient?.onRemoteIceCandidate(sdpMid, sdpMLineIndex, candidate)
+            if (webRtcClient == null) {
+                Log.i(TAG, "WebRtcClient is null, queueing ICE candidate from $fromId")
+                pendingIceCandidates.add(PendingIceCandidate(sdpMid, sdpMLineIndex, candidate))
+            } else {
+                webRtcClient?.onRemoteIceCandidate(sdpMid, sdpMLineIndex, candidate)
+            }
         }
     }
 
@@ -598,6 +614,17 @@ class ControlledService : Service() {
         }
 
         val typeStr = event.optString("type", "")
+
+        if (typeStr == "DISCONNECT") {
+            Log.i(TAG, "Received DISCONNECT message from controller, closing WebRTC connection")
+            turnScreenOffIfNeeded()
+            webRtcClient?.dispose()
+            webRtcClient = null
+            ConnectionState.reset("controlled")
+            updateNotification("已注册，等待控制")
+            return
+        }
+
         val x = event.optDouble("x", 0.0).toFloat()
         val y = event.optDouble("y", 0.0).toFloat()
         val x2 = event.optDouble("x2", 0.0).toFloat()
@@ -920,6 +947,9 @@ class ControlledService : Service() {
 
         webRtcClient?.dispose()
         webRtcClient = null
+
+        injector?.destroy()
+        injector = null
 
         if (::signalingClient.isInitialized) {
             try { signalingClient.disconnect() } catch (_: Exception) {}
