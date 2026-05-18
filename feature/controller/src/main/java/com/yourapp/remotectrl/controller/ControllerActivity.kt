@@ -136,6 +136,15 @@ class ControllerActivity : AppCompatActivity() {
         Log.i(TAG, "connectToDevice() targetId=$targetId")
         updateStatus("正在连接服务器...")
 
+        // 【修复5】重新连接前，必须彻底释放旧的渲染器
+        if (surfaceInitialized) {
+            try {
+                surfaceViewRenderer.release()
+            } catch (e: Exception) {
+                Log.w(TAG, "Surface release error: ${e.message}")
+            }
+        }
+
         isConnected = false
         surfaceInitialized = false
         isSurfaceReady = false
@@ -244,6 +253,7 @@ class ControllerActivity : AppCompatActivity() {
             return
         }
         surfaceInitAttempts++
+        // 【修复6】处理安全的可空 EglBaseContext
         val eglCtx = webRtcClient?.eglBaseContext
         if (eglCtx != null) {
             doInitSurface(eglCtx)

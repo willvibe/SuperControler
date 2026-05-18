@@ -35,12 +35,36 @@ class WebRtcClient(
         private const val TAG = "WebRtcClient"
         private const val VIDEO_TRACK_ID = "ScreenCapture"
         private const val DATA_CHANNEL_LABEL = "ControlChannel"
+
+        // 【修复1】确保 Native 库只初始化一次
+        @Volatile
+        private var isFactoryInitialized = false
+
+        // 【修复2】全局共享 EGL 上下文，防止 SurfaceViewRenderer 拿到死锁的上下文
+        @Volatile
+        private var sharedEglBase: EglBase? = null
+
+        fun getSharedEglBase(context: Context): EglBase {
+            if (!isFactoryInitialized) {
+                val initOptions = PeerConnectionFactory.InitializationOptions
+                    .builder(context.applicationContext)
+                    .setEnableInternalTracer(false)
+                    .createInitializationOptions()
+                PeerConnectionFactory.initialize(initOptions)
+                isFactoryInitialized = true
+            }
+            if (sharedEglBase == null) {
+                sharedEglBase = EglBase.create()
+            }
+            return sharedEglBase!!
+        }
     }
 
     var eventListener: EventListener? = null
 
-    private val eglBase: EglBase = EglBase.create()
-    val eglBaseContext: EglBase.Context get() = eglBase.eglBaseContext
+    // 【修复3】移除立即初始化的 val，改为可空的安全类型
+    private var eglBase: EglBase? = null
+    val eglBaseContext: EglBase.Context? get() = eglBase?.eglBaseContext
 
     // 【修复10】主线程 Handler，用于将 WebRTC 内部线程回调切到主线程
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -108,14 +132,11 @@ class WebRtcClient(
         if (isDisposed) return
         Log.i(TAG, "initialize()")
 
-        val initOptions = PeerConnectionFactory.InitializationOptions
-            .builder(context)
-            .setEnableInternalTracer(false)
-            .createInitializationOptions()
-        PeerConnectionFactory.initialize(initOptions)
+        // 【修复4】严格保证顺序：先 init Native 库，再获取 EglBase
+        eglBase = getSharedEglBase(context)
 
-        val encoderFactory = DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true)
-        val decoderFactory = DefaultVideoDecoderFactory(eglBase.eglBaseContext)
+        val encoderFactory = DefaultVideoEncoderFactory(eglBase!!.eglBaseContext, true, true)
+        val decoderFactory = DefaultVideoDecoderFactory(eglBase!!.eglBaseContext)
 
         peerConnectionFactory = PeerConnectionFactory.builder()
             .setVideoEncoderFactory(encoderFactory)
@@ -176,7 +197,8 @@ class WebRtcClient(
             }
         })
 
-        val sth = SurfaceTextureHelper.create("CaptureThread", eglBase.eglBaseContext)
+        val eglCtx = eglBase?.eglBaseContext ?: return
+        val sth = SurfaceTextureHelper.create("CaptureThread", eglCtx)
         this.surfaceTextureHelper = sth
         videoCapturer!!.initialize(sth, context, videoSource!!.capturerObserver)
         videoCapturer!!.startCapture(width, height, fps)
@@ -557,9 +579,10 @@ class WebRtcClient(
         queuedRemoteIceCandidates.clear()
         queuedLocalIceCandidates.clear()
 
-        try {
-            eglBase.release()
-        } catch (_: Exception) {}
+        // ❌ 【修复2】必须删除这段代码！绝对不能释放全局共享的 EGL Context，否则 UI 渲染器必崩
+        // try {
+        //     eglBase?.release()
+        // } catch (_: Exception) {}
 
         isScreenCaptureReady = false
         hasRemoteOffer = false

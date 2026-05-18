@@ -129,6 +129,8 @@ class InputInjector(private val context: Context) {
                 // 【修复6】重连并重试一次指令
                 if (retryCount < 1) {
                     sendRawCommand(cmd, retryCount + 1)
+                } else {
+                    // do nothing, retry exhausted
                 }
             }
         }
