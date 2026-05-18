@@ -153,12 +153,12 @@ class ControlledService : Service() {
                 startForeground(
                     NOTIFICATION_ID,
                     buildNotification("正在启动..."),
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
                 )
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForeground(NOTIFICATION_ID, buildNotification("正在启动..."))
             }
-            Log.i(TAG, "startForeground() called with SPECIAL_USE")
+            Log.i(TAG, "startForeground() called with MEDIA_PROJECTION")
         } catch (e: Exception) {
             Log.e(TAG, "startForeground() failed: ${e.javaClass.simpleName} - ${e.message}")
         }
@@ -497,8 +497,9 @@ class ControlledService : Service() {
                     wakeUpScreenIfNeeded()
                     sendScreenInfo()
                 } else {
-                    Log.i(TAG, "WebRTC disconnected, turning screen off")
+                    Log.i(TAG, "WebRTC disconnected, turning screen off and resetting state")
                     turnScreenOffIfNeeded()
+                    videoCaptureStarted = false
                 }
             }
         }
@@ -619,6 +620,8 @@ class ControlledService : Service() {
             turnScreenOffIfNeeded()
             webRtcClient?.dispose()
             webRtcClient = null
+            videoCaptureStarted = false
+            projectionRequestInProgress = false
             ConnectionState.reset("controlled")
             updateNotification("已注册，等待控制")
             return

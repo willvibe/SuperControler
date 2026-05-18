@@ -575,7 +575,7 @@ class ControllerActivity : AppCompatActivity() {
             withContext(Dispatchers.IO) {
                 Log.i(TAG, "ControllerActivity destroyed, disconnecting WebRTC and signaling")
                 val service = ControllerService.getInstance()
-                if (service != null) {
+                if (service != null && isFinishing) {
                     service.setActivityCallbacks(null, null, null)
                     service.webRtcClient?.dispose()
                     service.webRtcClient = null
