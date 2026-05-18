@@ -339,7 +339,10 @@ class SignalingClient(private val serverUrl: String) {
                 Log.i(TAG, "punch_info received: peerId=$peerId, role=$role (WebRTC mode - skipping UDP punch)")
                 scope.launch {
                     setState(State.Connected)
-                    onPeerConnected?.invoke(peerId, role)
+                    // 【修复9】强制切换到主线程触发连接成功回调
+                    withContext(Dispatchers.Main) {
+                        onPeerConnected?.invoke(peerId, role)
+                    }
                 }
             }
             "relay" -> {
@@ -364,7 +367,10 @@ class SignalingClient(private val serverUrl: String) {
                     ))
                 }
                 Log.i(TAG, "Received devices_list: ${devices.size} devices")
-                onDevicesOnline?.invoke(devices)
+                // 【修复9】切主线程更新设备列表
+                scope.launch(Dispatchers.Main) {
+                    onDevicesOnline?.invoke(devices)
+                }
             }
             "device_online", "device_offline" -> {
                 val payload = msg.optJSONObject("payload") ?: return
@@ -375,7 +381,9 @@ class SignalingClient(private val serverUrl: String) {
                     isOnline = msg.optString("type") == "device_online"
                 )
                 Log.i(TAG, "Device ${if (device.isOnline) "online" else "offline"}: ${device.id}")
-                onDevicesOnline?.invoke(listOf(device))
+                scope.launch(Dispatchers.Main) {
+                    onDevicesOnline?.invoke(listOf(device))
+                }
             }
             "pong" -> {
                 Log.d(TAG, "Server pong received")
@@ -527,6 +535,7 @@ class SignalingClient(private val serverUrl: String) {
         }
     }
 
+    // 【修复9】setState 改为 suspend 函数，内部切主线程回调
     private suspend fun setState(newState: State) {
         stateLock.withLock { state = newState }
         val (status, msg) = when (newState) {
@@ -537,7 +546,10 @@ class SignalingClient(private val serverUrl: String) {
             is State.Error -> ConnectionState.STATUS_ERROR to newState.msg
         }
         Log.i(TAG, "State -> $newState (peerId=$peerId)")
-        onConnectionStateChange?.invoke(status, msg)
+        // 【修复9】切主线程更新状态，因为外部必然会据此更新 UI
+        withContext(Dispatchers.Main) {
+            onConnectionStateChange?.invoke(status, msg)
+        }
     }
 
     fun disconnect() {

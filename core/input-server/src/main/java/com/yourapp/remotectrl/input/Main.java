@@ -22,6 +22,17 @@ public class Main {
             System.err.println("Missing auth token.");
             return;
         }
+
+        // 【修复1】绕过 Android 9+ 的 Hidden API 限制
+        try {
+            Method getRuntimeMethod = Class.forName("dalvik.system.VMRuntime").getDeclaredMethod("getRuntime");
+            Object vmRuntime = getRuntimeMethod.invoke(null);
+            Method setHiddenApiExemptionsMethod = vmRuntime.getClass().getDeclaredMethod("setHiddenApiExemptions", String[].class);
+            setHiddenApiExemptionsMethod.invoke(vmRuntime, new Object[]{new String[]{"L"}});
+        } catch (Exception e) {
+            e.printStackTrace(); // 忽略旧版本不存在此方法的异常
+        }
+
         String authToken = args[0];
 
         initReflection();
@@ -36,21 +47,32 @@ public class Main {
         try (LocalServerSocket serverSocket = new LocalServerSocket("supercontroler_input")) {
             while (true) {
                 LocalSocket clientSocket = serverSocket.accept();
-                BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-
-                String firstLine = reader.readLine();
-                if (firstLine == null || !firstLine.equals(authToken)) {
-                    clientSocket.close();
-                    continue;
-                }
-
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    processCommand(line);
-                }
+                // 【修复5】开辟新线程处理单一客户端，防止阻塞主 accept 循环
+                new Thread(() -> handleClient(clientSocket, authToken)).start();
             }
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    // 【修复5】独立方法处理客户端连接，加上 finally 关闭
+    private static void handleClient(LocalSocket clientSocket, String authToken) {
+        try {
+            BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+
+            String firstLine = reader.readLine();
+            if (firstLine == null || !firstLine.equals(authToken)) {
+                return;
+            }
+
+            String line;
+            while ((line = reader.readLine()) != null) {
+                processCommand(line);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            try { clientSocket.close(); } catch (Exception ignored) {}
         }
     }
 

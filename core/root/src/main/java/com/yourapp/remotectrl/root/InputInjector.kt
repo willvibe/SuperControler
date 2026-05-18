@@ -55,7 +55,8 @@ class InputInjector(private val context: Context) {
             Shell.cmd("pkill -f 'com.yourapp.remotectrl.input.Main' 2>/dev/null || true").exec()
             Thread.sleep(200)
 
-            val cmd = "app_process -Djava.class.path=$TARGET_PATH /system/bin com.yourapp.remotectrl.input.Main $sessionToken &"
+            // 【修复8】使用 nohup 保证进程脱离会话独立运行
+            val cmd = "nohup app_process -Djava.class.path=$TARGET_PATH /system/bin com.yourapp.remotectrl.input.Main $sessionToken > /dev/null 2>&1 &"
             Shell.cmd(cmd).submit()
 
             Thread {
@@ -103,7 +104,8 @@ class InputInjector(private val context: Context) {
         }
     }
 
-    private fun sendRawCommand(cmd: String) {
+    // 【修复6】增加 retryCount 参数实现自动重试
+    private fun sendRawCommand(cmd: String, retryCount: Int = 0) {
         synchronized(socketLock) {
             if (outStream == null) {
                 try {
@@ -124,6 +126,10 @@ class InputInjector(private val context: Context) {
                 isSocketReady = false
                 outStream = null
                 localSocket = try { localSocket?.close(); null } catch (_: Exception) { null }
+                // 【修复6】重连并重试一次指令
+                if (retryCount < 1) {
+                    sendRawCommand(cmd, retryCount + 1)
+                }
             }
         }
     }

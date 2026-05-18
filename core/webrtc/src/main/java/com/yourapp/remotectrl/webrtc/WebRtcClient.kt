@@ -3,6 +3,8 @@ package com.yourapp.remotectrl.webrtc
 import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjection
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import org.json.JSONObject
 import org.webrtc.*
@@ -40,6 +42,9 @@ class WebRtcClient(
     private val eglBase: EglBase = EglBase.create()
     val eglBaseContext: EglBase.Context get() = eglBase.eglBaseContext
 
+    // 【修复10】主线程 Handler，用于将 WebRTC 内部线程回调切到主线程
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     private var peerConnectionFactory: PeerConnectionFactory? = null
     private var peerConnection: PeerConnection? = null
     private var videoCapturer: ScreenCapturerAndroid? = null
@@ -66,6 +71,9 @@ class WebRtcClient(
     private val iceQueueLock = ReentrantLock()
     @Volatile private var isRemoteSdpSet = false
 
+    // 【修复3】本地 ICE 候选者队列，防止 peerId 未设置时丢失
+    private val queuedLocalIceCandidates = CopyOnWriteArrayList<IceCandidate>()
+
     private val videoTrackReported = AtomicBoolean(false)
 
     var peerId: String
@@ -75,6 +83,11 @@ class WebRtcClient(
                 _peerId = value
                 Log.i(TAG, "peerId set to: $value")
                 flushQueuedIceCandidates()
+                // 【修复3】立刻发送积压的本地 ICE
+                queuedLocalIceCandidates.forEach { candidate ->
+                    signalingListener.sendIceCandidate(value, candidate.sdpMid, candidate.sdpMLineIndex, candidate.sdp)
+                }
+                queuedLocalIceCandidates.clear()
             }
         }
 
@@ -203,12 +216,13 @@ class WebRtcClient(
                 Log.i(TAG, "onIceConnectionChange: $state")
                 when (state) {
                     PeerConnection.IceConnectionState.CONNECTED -> {
-                        eventListener?.onConnectionStateChange(true)
+                        // 【修复10】切到主线程回调
+                        mainHandler.post { eventListener?.onConnectionStateChange(true) }
                     }
                     PeerConnection.IceConnectionState.DISCONNECTED,
                     PeerConnection.IceConnectionState.FAILED,
                     PeerConnection.IceConnectionState.CLOSED -> {
-                        eventListener?.onConnectionStateChange(false)
+                        mainHandler.post { eventListener?.onConnectionStateChange(false) }
                     }
                     else -> {}
                 }
@@ -232,7 +246,9 @@ class WebRtcClient(
                         candidate.sdp
                     )
                 } else {
-                    Log.w(TAG, "onIceCandidate: peerId is empty, cannot send ICE candidate yet")
+                    // 【修复3】peerId 为空时加入队列而不是丢弃
+                    Log.w(TAG, "onIceCandidate: peerId is empty, queuing local candidate")
+                    queuedLocalIceCandidates.add(candidate)
                 }
             }
 
@@ -263,7 +279,8 @@ class WebRtcClient(
                     if (track is VideoTrack && !videoTrackReported.getAndSet(true)) {
                         Log.i(TAG, "Remote VideoTrack received, enabled=${track.enabled()}")
                         track.setEnabled(true)
-                        eventListener?.onRemoteVideoTrack(track)
+                        // 【修复10】将轨道交付抛给主线程，确保 UI 安全绑定
+                        mainHandler.post { eventListener?.onRemoteVideoTrack(track) }
                     }
                 }
             }
@@ -280,8 +297,12 @@ class WebRtcClient(
             ordered = true
         }
         controlDataChannel = pc.createDataChannel(DATA_CHANNEL_LABEL, config)
-        setupDataChannelObserver(controlDataChannel!!)
-        Log.i(TAG, "Control DataChannel created")
+
+        // 【修复11】安全判空处理，移除暴力解包 !!
+        controlDataChannel?.let { channel ->
+            setupDataChannelObserver(channel)
+            Log.i(TAG, "Control DataChannel created")
+        } ?: Log.e(TAG, "Failed to create Control DataChannel!")
     }
 
     private fun setupDataChannelObserver(channel: DataChannel) {
@@ -534,6 +555,7 @@ class WebRtcClient(
         peerConnectionFactory = null
 
         queuedRemoteIceCandidates.clear()
+        queuedLocalIceCandidates.clear()
 
         try {
             eglBase.release()

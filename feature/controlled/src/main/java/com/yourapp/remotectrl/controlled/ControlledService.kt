@@ -105,8 +105,6 @@ class ControlledService : Service() {
 
     private var reconnectFailCount = 0
 
-    private var scrollBatchHandler: Handler? = null
-    private var scrollBatchRunnable: Runnable? = null
     private var pendingScrollDx = 0
     private var pendingScrollDy = 0
     private var scrollStartX = 0
@@ -727,6 +725,7 @@ class ControlledService : Service() {
         }
     }
 
+    // 【修复2】将批处理逻辑移至协程的后台线程（IO 线程）中执行
     private fun batchScroll(inj: InputInjector, x: Int, y: Int, dx: Int, dy: Int) {
         if (!isBatchingScroll) {
             isBatchingScroll = true
@@ -735,8 +734,8 @@ class ControlledService : Service() {
             pendingScrollDx = dx
             pendingScrollDy = dy
 
-            scrollBatchHandler = Handler(Looper.getMainLooper())
-            scrollBatchRunnable = Runnable {
+            serviceScope.launch(Dispatchers.IO) {
+                delay(80)
                 if (pendingScrollDx != 0 || pendingScrollDy != 0) {
                     val endX = scrollStartX + pendingScrollDx
                     val endY = scrollStartY + pendingScrollDy
@@ -745,10 +744,7 @@ class ControlledService : Service() {
                 isBatchingScroll = false
                 pendingScrollDx = 0
                 pendingScrollDy = 0
-                scrollBatchRunnable = null
-                scrollBatchHandler = null
             }
-            scrollBatchHandler?.postDelayed(scrollBatchRunnable!!, 80)
         } else {
             pendingScrollDx += dx
             pendingScrollDy += dy
@@ -782,7 +778,8 @@ class ControlledService : Service() {
                     "settings put system screen_brightness 128"
                 )
                 for (cmd in commands) {
-                    com.topjohnwu.superuser.Shell.cmd(cmd).exec()
+                    // 【修复7】用 submit 替代 exec，避免阻塞主线程
+                    com.topjohnwu.superuser.Shell.cmd(cmd).submit()
                 }
                 Log.i(TAG, "Screen wake-up commands executed via root")
 
@@ -828,7 +825,8 @@ class ControlledService : Service() {
                         "input swipe $centerX $startY $centerX $endY 300"
                     )
                     for (cmd in commands) {
-                        com.topjohnwu.superuser.Shell.cmd(cmd).exec()
+                        // 【修复7】用 submit 替代 exec
+                        com.topjohnwu.superuser.Shell.cmd(cmd).submit()
                     }
                     Log.i(TAG, "Keyguard dismiss swipe executed via root")
                 } catch (e: Exception) {
@@ -843,7 +841,8 @@ class ControlledService : Service() {
     private fun turnScreenOffIfNeeded() {
         if (RootManager.isRootAvailable()) {
             try {
-                com.topjohnwu.superuser.Shell.cmd("input keyevent KEYCODE_POWER").exec()
+                // 【修复7】用 submit 替代 exec
+                com.topjohnwu.superuser.Shell.cmd("input keyevent KEYCODE_POWER").submit()
                 Log.i(TAG, "Screen turned off via root after WebRTC disconnect")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to turn screen off: ${e.message}")
