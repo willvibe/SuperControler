@@ -57,6 +57,12 @@ object MediaProjectionHelper {
         return cachedResultCode == -1 && cachedResultData != null
     }
 
+    fun clearCachedPermission() {
+        cachedResultCode = 0
+        cachedResultData = null
+        Log.i(TAG, "Cached MediaProjection permission cleared")
+    }
+
     fun clearAll(context: Context) {
         try {
             cachedProjection?.stop()

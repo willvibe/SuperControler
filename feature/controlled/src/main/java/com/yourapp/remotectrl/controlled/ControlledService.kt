@@ -500,6 +500,7 @@ class ControlledService : Service() {
                     Log.i(TAG, "WebRTC disconnected, turning screen off and resetting state")
                     turnScreenOffIfNeeded()
                     videoCaptureStarted = false
+                    MediaProjectionHelper.clearCachedPermission()
                 }
             }
         }
@@ -623,6 +624,7 @@ class ControlledService : Service() {
             videoCaptureStarted = false
             projectionRequestInProgress = false
             ConnectionState.reset("controlled")
+            MediaProjectionHelper.clearCachedPermission()
             updateNotification("已注册，等待控制")
             return
         }

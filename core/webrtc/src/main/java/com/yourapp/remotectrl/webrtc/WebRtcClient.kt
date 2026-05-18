@@ -129,11 +129,7 @@ class WebRtcClient(
         localVideoTrack = factory.createVideoTrack(VIDEO_TRACK_ID, videoSource)
         localVideoTrack?.setEnabled(true)
 
-        peerConnection?.addTransceiver(
-            localVideoTrack,
-            RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_ONLY)
-        )
-        Log.i(TAG, "VideoTrack added as SEND_ONLY transceiver")
+        Log.i(TAG, "VideoTrack ready, waiting for remote offer to bind")
     }
 
     fun setupAsController(targetId: String) {
@@ -363,10 +359,7 @@ class WebRtcClient(
         if (isDisposed) return
         val pc = peerConnection ?: return
 
-        val constraints = MediaConstraints().apply {
-            mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "false"))
-        }
+        val constraints = MediaConstraints()
 
         pc.createOffer(object : SdpObserver {
             override fun onCreateSuccess(sdp: SessionDescription?) {
@@ -455,6 +448,19 @@ class WebRtcClient(
                 }
                 if (sdpType == SessionDescription.Type.OFFER) {
                     hasRemoteOffer = true
+
+                    val track = localVideoTrack
+                    if (track != null && !isInitiator) {
+                        for (transceiver in pc.transceivers) {
+                            if (transceiver.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO) {
+                                transceiver.sender.setTrack(track, true)
+                                transceiver.direction = RtpTransceiver.RtpTransceiverDirection.SEND_ONLY
+                                Log.i(TAG, "Successfully bound local screen track to remote offer transceiver!")
+                                break
+                            }
+                        }
+                    }
+
                     if (isScreenCaptureReady) {
                         createAnswer()
                     } else {
