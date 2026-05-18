@@ -395,6 +395,7 @@ class ControllerActivity : AppCompatActivity() {
         val buttonRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
+            setPadding(dp(48), 0, dp(16), 0)
         }
 
         buttonRow.addIconButton("◀") { sendControlEventJson(newKeyEventJson(android.view.KeyEvent.KEYCODE_BACK)) }
@@ -410,13 +411,12 @@ class ControllerActivity : AppCompatActivity() {
 
         val dragHandle = TextView(this).apply {
             text = "⋮⋮"
-            textSize = 12f
-            setTextColor(Color.argb(180, 255, 255, 255))
+            textSize = 16f
+            setTextColor(Color.argb(200, 255, 255, 255))
             gravity = Gravity.CENTER
-            setPadding(dp(4), 0, dp(4), 0)
         }
         container.addView(dragHandle, FrameLayout.LayoutParams(
-            dp(24),
+            dp(48),
             FrameLayout.LayoutParams.MATCH_PARENT,
             Gravity.START or Gravity.CENTER_VERTICAL
         ))
@@ -442,21 +442,9 @@ class ControllerActivity : AppCompatActivity() {
         var startX = 0f
         var startY = 0f
         var isDragging = false
-        var longPressTriggered = false
-        val longPressHandler = android.os.Handler(android.os.Looper.getMainLooper())
-
-        val startLongPressCheck = Runnable {
-            longPressTriggered = true
-            isDragging = true
-            view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
-            Log.i(TAG, "Long press detected, drag mode activated")
-        }
 
         view.setOnTouchListener { v, event ->
-            val parent = v.parent as? FrameLayout
-            if (parent == null) {
-                return@setOnTouchListener false
-            }
+            val parent = v.parent as? FrameLayout ?: return@setOnTouchListener false
 
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -465,18 +453,18 @@ class ControllerActivity : AppCompatActivity() {
                     startX = event.rawX
                     startY = event.rawY
                     isDragging = false
-                    longPressTriggered = false
-                    longPressHandler.postDelayed(startLongPressCheck, 400)
                     v.parent.requestDisallowInterceptTouchEvent(true)
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val moveDist = kotlin.math.hypot(event.rawX - startX, event.rawY - startY)
-                    if (moveDist > 15f && !longPressTriggered) {
-                        longPressHandler.removeCallbacks(startLongPressCheck)
+                    if (!isDragging) {
+                        val moveDist = kotlin.math.hypot(event.rawX - startX, event.rawY - startY)
+                        if (moveDist > 10f) {
+                            isDragging = true
+                        }
                     }
-                    if (isDragging || longPressTriggered) {
-                        isDragging = true
+
+                    if (isDragging) {
                         val newX = (event.rawX + dX).coerceIn(0f, (parent.width - v.width).toFloat().coerceAtLeast(0f))
                         val newY = (event.rawY + dY).coerceIn(0f, (parent.height - v.height).toFloat().coerceAtLeast(0f))
                         v.x = newX
@@ -484,22 +472,12 @@ class ControllerActivity : AppCompatActivity() {
                     }
                     true
                 }
-                MotionEvent.ACTION_UP -> {
-                    longPressHandler.removeCallbacks(startLongPressCheck)
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     v.parent.requestDisallowInterceptTouchEvent(false)
-                    val wasDragging = isDragging
-                    isDragging = false
-                    longPressTriggered = false
-                    if (!wasDragging) {
+                    if (!isDragging && event.actionMasked == MotionEvent.ACTION_UP) {
                         v.performClick()
                     }
-                    true
-                }
-                MotionEvent.ACTION_CANCEL -> {
-                    longPressHandler.removeCallbacks(startLongPressCheck)
-                    v.parent.requestDisallowInterceptTouchEvent(false)
                     isDragging = false
-                    longPressTriggered = false
                     true
                 }
                 else -> false
