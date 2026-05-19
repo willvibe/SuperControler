@@ -269,7 +269,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildUI() {
-        val rootView = ScrollView(this)
+        val rootView = ScrollView(this).apply {
+            setBackgroundColor(Color.parseColor("#121212"))
+        }
         val contentView = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(48), dp(20), dp(20))
@@ -284,7 +286,7 @@ class MainActivity : AppCompatActivity() {
         val titleText = TextView(this).apply {
             text = "SuperControler"
             textSize = 24f
-            setTextColor(Color.parseColor("#1976D2"))
+            setTextColor(Color.parseColor("#82B1FF"))
         }
         headerLayout.addView(titleText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
 
@@ -417,7 +419,7 @@ class MainActivity : AppCompatActivity() {
         logScrollView = ScrollView(this)
         logText = TextView(this).apply {
             textSize = 11f
-            setTextColor(Color.parseColor("#4CAF50"))
+            setTextColor(Color.parseColor("#81C784"))
             setPadding(dp(8), dp(8), dp(8), dp(8))
         }
         logScrollView.addView(logText)
@@ -519,7 +521,7 @@ class MainActivity : AppCompatActivity() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(16), dp(16), dp(16))
-            setBackgroundColor(Color.parseColor("#F5F5F5"))
+            setBackgroundColor(Color.parseColor("#1E1E2E"))
         }
     }
 
@@ -676,7 +678,7 @@ class MainActivity : AppCompatActivity() {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(dp(8), dp(8), dp(8), dp(8))
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#2D2D3D"))
         }
 
         val normalizedId = id.trim().uppercase()
@@ -698,11 +700,12 @@ class MainActivity : AppCompatActivity() {
         infoLayout.addView(TextView(this).apply {
             text = name
             textSize = 14f
+            setTextColor(Color.WHITE)
         })
         infoLayout.addView(TextView(this).apply {
             text = "ID: $id"
             textSize = 11f
-            setTextColor(Color.GRAY)
+            setTextColor(Color.parseColor("#AAAAAA"))
         })
 
         row.addView(onlineIndicator)
@@ -738,7 +741,7 @@ class MainActivity : AppCompatActivity() {
         if (allOnlineDevices.isEmpty()) {
             val emptyText = TextView(this).apply {
                 text = "暂无在线设备"
-                setTextColor(Color.GRAY)
+                setTextColor(Color.parseColor("#AAAAAA"))
                 textSize = 12f
             }
             devicesContainer.addView(emptyText)

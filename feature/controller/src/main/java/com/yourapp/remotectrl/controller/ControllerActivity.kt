@@ -58,6 +58,16 @@ class ControllerActivity : AppCompatActivity() {
         get() = ControllerService.getInstance()?.webRtcClient
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        try {
+            onCreateInternal(savedInstanceState)
+        } catch (e: Exception) {
+            Log.e(TAG, "FATAL: onCreate crashed: ${e.javaClass.simpleName} - ${e.message}", e)
+            Toast.makeText(this, "启动失败: ${e.message}", Toast.LENGTH_LONG).show()
+            finish()
+        }
+    }
+
+    private fun onCreateInternal(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 

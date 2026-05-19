@@ -371,18 +371,31 @@ class ControllerService : Service() {
         }
     }
 
+    @Volatile
+    private var isInitializingWebRtc = false
+
     private fun initWebRtcAsController(peerId: String) {
         Log.i(TAG, "initWebRtcAsController: peerId=$peerId")
 
-        try {
-            webRtcClient?.dispose()
-        } catch (e: Exception) {
-            Log.e(TAG, "dispose old client error: ${e.message}")
+        if (isInitializingWebRtc) {
+            Log.w(TAG, "initWebRtcAsController: already initializing, skipping")
+            return
         }
-        webRtcClient = null
+        isInitializingWebRtc = true
 
         serviceScope.launch {
             try {
+                val oldClient = webRtcClient
+                if (oldClient != null) {
+                    Log.i(TAG, "Disposing old WebRtcClient on IO thread...")
+                    try {
+                        oldClient.dispose()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "dispose old client error: ${e.message}")
+                    }
+                    webRtcClient = null
+                }
+
                 val client = WebRtcClient(this@ControllerService, object : WebRtcClient.SignalingListener {
                     override fun sendSdp(targetId: String, type: String, sdp: String) {
                         signalingClient?.sendSdp(targetId, type, sdp)
@@ -435,17 +448,21 @@ class ControllerService : Service() {
                     }
                 }
 
+                Log.i(TAG, "Initializing WebRTC on IO thread...")
                 client.initialize()
+                Log.i(TAG, "WebRTC initialized, setting up as controller for peerId=$peerId")
                 client.setupAsController(peerId)
                 webRtcClient = client
 
-                Log.i(TAG, "WebRTC controller initialized, creating offer for peerId=$peerId")
+                Log.i(TAG, "WebRTC controller initialized successfully, offer sent for peerId=$peerId")
             } catch (e: Exception) {
-                Log.e(TAG, "initWebRtcAsController FAILED: ${e.javaClass.simpleName} - ${e.message}")
+                Log.e(TAG, "initWebRtcAsController FAILED: ${e.javaClass.simpleName} - ${e.message}", e)
                 webRtcClient = null
                 withContext(Dispatchers.Main) {
                     ConnectionState.update(ConnectionState.STATUS_ERROR, "WebRTC初始化失败: ${e.message}", "controller")
                 }
+            } finally {
+                isInitializingWebRtc = false
             }
         }
     }
