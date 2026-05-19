@@ -186,7 +186,7 @@ class WebRtcClient(
 
     fun startScreenCapture(intent: Intent, width: Int, height: Int, fps: Int) {
         if (isDisposed) return
-        val factory = peerConnectionFactory ?: return
+        if (peerConnectionFactory == null) return
 
         Log.i(TAG, "startScreenCapture() ${width}x${height}@${fps}fps")
 
@@ -568,6 +568,9 @@ class WebRtcClient(
 
         try {
             peerConnection?.close()
+        } catch (_: Exception) {}
+        try {
+            peerConnection?.dispose()
         } catch (_: Exception) {}
         peerConnection = null
 

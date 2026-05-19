@@ -374,66 +374,80 @@ class ControllerService : Service() {
     private fun initWebRtcAsController(peerId: String) {
         Log.i(TAG, "initWebRtcAsController: peerId=$peerId")
 
-        webRtcClient?.dispose()
+        try {
+            webRtcClient?.dispose()
+        } catch (e: Exception) {
+            Log.e(TAG, "dispose old client error: ${e.message}")
+        }
         webRtcClient = null
 
-        val client = WebRtcClient(this, object : WebRtcClient.SignalingListener {
-            override fun sendSdp(targetId: String, type: String, sdp: String) {
-                signalingClient?.sendSdp(targetId, type, sdp)
-            }
-            override fun sendIceCandidate(targetId: String, sdpMid: String, sdpMLineIndex: Int, candidate: String) {
-                signalingClient?.sendIceCandidate(targetId, sdpMid, sdpMLineIndex, candidate)
-            }
-        })
+        serviceScope.launch {
+            try {
+                val client = WebRtcClient(this@ControllerService, object : WebRtcClient.SignalingListener {
+                    override fun sendSdp(targetId: String, type: String, sdp: String) {
+                        signalingClient?.sendSdp(targetId, type, sdp)
+                    }
+                    override fun sendIceCandidate(targetId: String, sdpMid: String, sdpMLineIndex: Int, candidate: String) {
+                        signalingClient?.sendIceCandidate(targetId, sdpMid, sdpMLineIndex, candidate)
+                    }
+                })
 
-        client.eventListener = object : WebRtcClient.EventListener {
-            override fun onControlEvent(eventJson: String) {
-                Log.w(TAG, "Controller received control event (unexpected)")
-            }
+                client.eventListener = object : WebRtcClient.EventListener {
+                    override fun onControlEvent(eventJson: String) {
+                        Log.w(TAG, "Controller received control event (unexpected)")
+                    }
 
-            override fun onRemoteVideoTrack(videoTrack: org.webrtc.VideoTrack) {
-                Log.i(TAG, "Remote VideoTrack received from controlled side")
-                try {
-                    activityVideoTrackCallback?.invoke(videoTrack)
-                } catch (e: Exception) {
-                    Log.e(TAG, "activityVideoTrackCallback error: ${e.message}")
-                }
-            }
-
-            override fun onConnectionStateChange(connected: Boolean) {
-                Log.i(TAG, "WebRTC connection state: connected=$connected")
-                try {
-                    activityWebRtcConnectedCallback?.invoke(connected)
-                } catch (e: Exception) {
-                    Log.e(TAG, "activityWebRtcConnectedCallback error: ${e.message}")
-                }
-            }
-
-            override fun onDataChannelMessage(message: String) {
-                try {
-                    val json = org.json.JSONObject(message)
-                    val msgType = json.optString("type", "")
-                    if (msgType == "SCREEN_INFO") {
-                        val width = json.optInt("width", 1080)
-                        val height = json.optInt("height", 2400)
-                        Log.i(TAG, "Received SCREEN_INFO: ${width}x${height}")
+                    override fun onRemoteVideoTrack(videoTrack: org.webrtc.VideoTrack) {
+                        Log.i(TAG, "Remote VideoTrack received from controlled side")
                         try {
-                            activityScreenInfoCallback?.invoke(width, height)
+                            activityVideoTrackCallback?.invoke(videoTrack)
                         } catch (e: Exception) {
-                            Log.e(TAG, "activityScreenInfoCallback error: ${e.message}")
+                            Log.e(TAG, "activityVideoTrackCallback error: ${e.message}")
                         }
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "onDataChannelMessage parse error: ${e.message}")
+
+                    override fun onConnectionStateChange(connected: Boolean) {
+                        Log.i(TAG, "WebRTC connection state: connected=$connected")
+                        try {
+                            activityWebRtcConnectedCallback?.invoke(connected)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "activityWebRtcConnectedCallback error: ${e.message}")
+                        }
+                    }
+
+                    override fun onDataChannelMessage(message: String) {
+                        try {
+                            val json = org.json.JSONObject(message)
+                            val msgType = json.optString("type", "")
+                            if (msgType == "SCREEN_INFO") {
+                                val width = json.optInt("width", 1080)
+                                val height = json.optInt("height", 2400)
+                                Log.i(TAG, "Received SCREEN_INFO: ${width}x${height}")
+                                try {
+                                    activityScreenInfoCallback?.invoke(width, height)
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "activityScreenInfoCallback error: ${e.message}")
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "onDataChannelMessage parse error: ${e.message}")
+                        }
+                    }
+                }
+
+                client.initialize()
+                client.setupAsController(peerId)
+                webRtcClient = client
+
+                Log.i(TAG, "WebRTC controller initialized, creating offer for peerId=$peerId")
+            } catch (e: Exception) {
+                Log.e(TAG, "initWebRtcAsController FAILED: ${e.javaClass.simpleName} - ${e.message}")
+                webRtcClient = null
+                withContext(Dispatchers.Main) {
+                    ConnectionState.update(ConnectionState.STATUS_ERROR, "WebRTC初始化失败: ${e.message}", "controller")
                 }
             }
         }
-
-        client.initialize()
-        client.setupAsController(peerId)
-        webRtcClient = client
-
-        Log.i(TAG, "WebRTC controller initialized, creating offer for peerId=$peerId")
     }
 
     private fun requestDevicesListWithRetry() {

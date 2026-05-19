@@ -28,7 +28,7 @@ import org.webrtc.VideoTrack
 
 class ControllerActivity : AppCompatActivity() {
 
-    private lateinit var surfaceViewRenderer: SurfaceViewRenderer
+    private var surfaceViewRenderer: SurfaceViewRenderer = SurfaceViewRenderer(this)
     private var signalingClient: com.yourapp.remotectrl.network.SignalingClient? = null
     private lateinit var statusText: TextView
 
@@ -89,7 +89,6 @@ class ControllerActivity : AppCompatActivity() {
 
         val layout = FrameLayout(this)
 
-        surfaceViewRenderer = SurfaceViewRenderer(this)
         layout.addView(surfaceViewRenderer, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
@@ -136,7 +135,11 @@ class ControllerActivity : AppCompatActivity() {
         Log.i(TAG, "connectToDevice() targetId=$targetId")
         updateStatus("正在连接服务器...")
 
-        // 【修复5】重新连接前，必须彻底释放旧的渲染器
+        currentVideoTrack?.removeSink(surfaceViewRenderer)
+        currentVideoTrack = null
+        pendingVideoTrack?.removeSink(surfaceViewRenderer)
+        pendingVideoTrack = null
+
         if (surfaceInitialized) {
             try {
                 surfaceViewRenderer.release()
@@ -145,14 +148,30 @@ class ControllerActivity : AppCompatActivity() {
             }
         }
 
+        val parent = surfaceViewRenderer.parent as? FrameLayout
+        parent?.removeView(surfaceViewRenderer)
+
+        surfaceViewRenderer = SurfaceViewRenderer(this)
+        if (parent != null) {
+            parent.addView(surfaceViewRenderer, 0, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            ))
+        }
+
+        surfaceViewRenderer.setOnTouchListener { v, event ->
+            viewWidth = v.width
+            viewHeight = v.height
+            handleTouchEvent(event)
+            true
+        }
+
         isConnected = false
         surfaceInitialized = false
         isSurfaceReady = false
         surfaceInitAttempts = 0
-        currentVideoTrack?.removeSink(surfaceViewRenderer)
-        currentVideoTrack = null
-        pendingVideoTrack?.removeSink(surfaceViewRenderer)
-        pendingVideoTrack = null
+
+        initSurfaceViewRendererEarly()
 
         val service = ControllerService.getInstance()
         if (service != null) {
@@ -556,12 +575,16 @@ class ControllerActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        surfaceViewRenderer.setFpsReduction(Float.MAX_VALUE)
+        if (surfaceInitialized) {
+            surfaceViewRenderer.setFpsReduction(Float.MAX_VALUE)
+        }
     }
 
     override fun onPause() {
         super.onPause()
-        surfaceViewRenderer.setFpsReduction(1f)
+        if (surfaceInitialized) {
+            surfaceViewRenderer.setFpsReduction(1f)
+        }
     }
 
     override fun onDestroy() {
