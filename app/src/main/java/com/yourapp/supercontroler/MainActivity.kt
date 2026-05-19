@@ -563,10 +563,6 @@ class MainActivity : AppCompatActivity() {
             .setSingleChoiceItems(modes, currentIndex) { dialog, which ->
                 val newMode = if (which == 0) MODE_CONTROLLED else MODE_CONTROLLER
                 if (newMode != currentMode) {
-                    if (isServiceRunning) {
-                        if (currentMode == MODE_CONTROLLED) stopControlledService()
-                        else stopControllerService()
-                    }
                     saveMode(newMode)
                     rebuildUI()
                     appendLog("模式已切换为: ${if (newMode == MODE_CONTROLLED) "被控端" else "主控端"}")
