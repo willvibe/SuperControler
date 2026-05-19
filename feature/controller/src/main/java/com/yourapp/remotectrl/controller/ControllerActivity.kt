@@ -549,15 +549,7 @@ class ControllerActivity : AppCompatActivity() {
                     Log.e(TAG, "Error disposing WebRTC: ${e.message}")
                 }
 
-                try {
-                    service.getSignalingClient()?.resetForReconnect()
-                    Log.i(TAG, "Signaling client reset for reconnect")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error resetting signaling: ${e.message}")
-                }
-
                 service.disconnectWebRtcAndReset()
-                service.setActivityCallbacks(null, null, null)
             }
             finish()
         }
@@ -611,9 +603,8 @@ class ControllerActivity : AppCompatActivity() {
             service.activityScreenInfoCallback = null
 
             lifecycleScope.launch(Dispatchers.IO) {
-                Log.i(TAG, "ControllerActivity destroyed, disconnecting WebRTC and signaling")
+                Log.i(TAG, "ControllerActivity destroyed, disconnecting WebRTC (keeping signaling)")
                 service.disconnectWebRtcAndReset()
-                service.getSignalingClient()?.resetForReconnect()
             }
         }
 

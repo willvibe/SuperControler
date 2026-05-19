@@ -503,8 +503,8 @@ class ControlledService : Service() {
                     projectionRequestInProgress = false
                     pendingIceCandidates.clear()
                     pendingSdpFromId = null
-                    MediaProjectionHelper.clearCachedPermission()
-                    serviceScope.launch { signalingClient.connect(DeviceIdManager.getDeviceId(this@ControlledService)) }
+                    pendingSdpType = null
+                    pendingSdpContent = null
                 }
             }
         }
@@ -545,12 +545,17 @@ class ControlledService : Service() {
             } else if (MediaProjectionHelper.hasCachedPermission()) {
                 val data = MediaProjectionHelper.getCachedProjectionData()
                 if (data != null) {
+                    Log.i(TAG, "onPeerConnected: re-initializing WebRtcClient with cached MediaProjection")
                     startWebRtcCapture(data, peerId)
+                    processPendingSdp()
                 }
             } else {
                 Log.i(TAG, "onPeerConnected: saving peerId=$peerId for later, WebRtcClient not ready yet")
                 if (pendingSdpFromId == null) {
                     pendingSdpFromId = peerId
+                }
+                if (!projectionRequestInProgress && !videoCaptureStarted) {
+                    requestMediaProjection()
                 }
             }
         }
