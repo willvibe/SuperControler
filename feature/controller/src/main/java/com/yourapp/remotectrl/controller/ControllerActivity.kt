@@ -28,7 +28,7 @@ import org.webrtc.VideoTrack
 
 class ControllerActivity : AppCompatActivity() {
 
-    private var surfaceViewRenderer: SurfaceViewRenderer = SurfaceViewRenderer(this)
+    private lateinit var surfaceViewRenderer: SurfaceViewRenderer
     private var signalingClient: com.yourapp.remotectrl.network.SignalingClient? = null
     private lateinit var statusText: TextView
 
@@ -89,6 +89,7 @@ class ControllerActivity : AppCompatActivity() {
 
         val layout = FrameLayout(this)
 
+        surfaceViewRenderer = SurfaceViewRenderer(this)
         layout.addView(surfaceViewRenderer, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
@@ -119,8 +120,6 @@ class ControllerActivity : AppCompatActivity() {
 
         setContentView(layout)
 
-        initSurfaceViewRendererEarly()
-
         surfaceViewRenderer.setOnTouchListener { v, event ->
             viewWidth = v.width
             viewHeight = v.height
@@ -146,32 +145,14 @@ class ControllerActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Log.w(TAG, "Surface release error: ${e.message}")
             }
-        }
-
-        val parent = surfaceViewRenderer.parent as? FrameLayout
-        parent?.removeView(surfaceViewRenderer)
-
-        surfaceViewRenderer = SurfaceViewRenderer(this)
-        if (parent != null) {
-            parent.addView(surfaceViewRenderer, 0, FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            ))
-        }
-
-        surfaceViewRenderer.setOnTouchListener { v, event ->
-            viewWidth = v.width
-            viewHeight = v.height
-            handleTouchEvent(event)
-            true
+            surfaceInitialized = false
+            isSurfaceReady = false
         }
 
         isConnected = false
-        surfaceInitialized = false
-        isSurfaceReady = false
         surfaceInitAttempts = 0
 
-        initSurfaceViewRendererEarly()
+        startSurfaceInitPolling()
 
         val service = ControllerService.getInstance()
         if (service != null) {
@@ -226,7 +207,6 @@ class ControllerActivity : AppCompatActivity() {
                         pendingVideoTrack = videoTrack
                         Log.i(TAG, "Surface was not ready. Forcing surface initialization wake-up!")
                         surfaceInitAttempts = 0
-                        tryInitSurface()
                     }
 
                     isConnected = true
@@ -257,28 +237,29 @@ class ControllerActivity : AppCompatActivity() {
     }
 
     private var surfaceInitAttempts = 0
+    private var surfacePollingRunnable: Runnable? = null
 
-    private fun initSurfaceViewRendererEarly() {
-        surfaceInitialized = false
-        isSurfaceReady = false
+    private fun startSurfaceInitPolling() {
+        surfacePollingRunnable?.let { surfaceViewRenderer.removeCallbacks(it) }
         surfaceInitAttempts = 0
-        tryInitSurface()
-    }
 
-    private fun tryInitSurface() {
-        if (surfaceInitialized) return
-        if (surfaceInitAttempts > 50) {
-            Log.e(TAG, "Surface init failed after 50 attempts, giving up")
-            return
+        surfacePollingRunnable = object : Runnable {
+            override fun run() {
+                if (surfaceInitialized) return
+                if (surfaceInitAttempts > 100) {
+                    Log.e(TAG, "Surface init failed after 100 attempts, giving up")
+                    return
+                }
+                surfaceInitAttempts++
+                val eglCtx = webRtcClient?.eglBaseContext
+                if (eglCtx != null) {
+                    doInitSurface(eglCtx)
+                    return
+                }
+                surfaceViewRenderer.postDelayed(this, 200)
+            }
         }
-        surfaceInitAttempts++
-        // 【修复6】处理安全的可空 EglBaseContext
-        val eglCtx = webRtcClient?.eglBaseContext
-        if (eglCtx != null) {
-            doInitSurface(eglCtx)
-            return
-        }
-        surfaceViewRenderer.postDelayed({ tryInitSurface() }, 300)
+        surfaceViewRenderer.post(surfacePollingRunnable!!)
     }
 
     private fun doInitSurface(eglCtx: org.webrtc.EglBase.Context) {
@@ -313,6 +294,7 @@ class ControllerActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "SurfaceViewRenderer init failed: ${e.message}")
+            surfaceViewRenderer.postDelayed({ startSurfaceInitPolling() }, 500)
         }
     }
 
@@ -576,19 +558,30 @@ class ControllerActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (surfaceInitialized) {
-            surfaceViewRenderer.setFpsReduction(Float.MAX_VALUE)
+            try {
+                surfaceViewRenderer.setFpsReduction(Float.MAX_VALUE)
+            } catch (e: Exception) {
+                Log.w(TAG, "onResume setFpsReduction error: ${e.message}")
+            }
         }
     }
 
     override fun onPause() {
         super.onPause()
         if (surfaceInitialized) {
-            surfaceViewRenderer.setFpsReduction(1f)
+            try {
+                surfaceViewRenderer.setFpsReduction(1f)
+            } catch (e: Exception) {
+                Log.w(TAG, "onPause setFpsReduction error: ${e.message}")
+            }
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+
+        surfacePollingRunnable?.let { surfaceViewRenderer.removeCallbacks(it) }
+        surfacePollingRunnable = null
 
         pendingVideoTrack?.removeSink(surfaceViewRenderer)
         pendingVideoTrack = null
