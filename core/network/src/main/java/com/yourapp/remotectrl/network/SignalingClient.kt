@@ -302,7 +302,7 @@ class SignalingClient(private val serverUrl: String) {
             while (isActive && !isDestroyed) {
                 delay(15_000)
                 val elapsed = System.currentTimeMillis() - lastPongTime
-                if (elapsed > 60_000) {
+                if (elapsed > 45_000) {
                     Log.w(TAG, "No message from server for ${elapsed}ms, closing connection")
                     val currentWs = ws
                     if (currentWs != null) {
@@ -535,7 +535,7 @@ class SignalingClient(private val serverUrl: String) {
     private fun scheduleReconnect() {
         if (isDestroyed) return
         reconnectJob?.cancel()
-        val delayMs = minOf(1000L * (1L shl minOf(reconnectAttempts, 6)), 30_000L)
+        val delayMs = if (reconnectAttempts == 0) 500L else minOf(1000L * (1L shl minOf(reconnectAttempts, 6)), 30_000L)
         reconnectAttempts++
         Log.i(TAG, "Reconnect in ${delayMs}ms (attempt #$reconnectAttempts)")
         reconnectJob = scope.launch {

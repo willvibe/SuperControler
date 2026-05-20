@@ -645,6 +645,8 @@ class ControlledService : Service() {
         if (typeStr == "DISCONNECT") {
             Log.i(TAG, "Received DISCONNECT message from controller, closing WebRTC connection")
 
+            turnScreenOffIfNeeded()
+
             val clientToDispose = webRtcClient
             webRtcClient = null
             videoCaptureStarted = false
@@ -867,9 +869,8 @@ class ControlledService : Service() {
     private fun turnScreenOffIfNeeded() {
         if (RootManager.isRootAvailable()) {
             try {
-                // 【修复7】用 submit 替代 exec
-                com.topjohnwu.superuser.Shell.cmd("input keyevent KEYCODE_POWER").submit()
-                Log.i(TAG, "Screen turned off via root after WebRTC disconnect")
+                com.topjohnwu.superuser.Shell.cmd("input keyevent 223").submit()
+                Log.i(TAG, "Screen turned off via root (KEYCODE_SLEEP) after WebRTC disconnect")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to turn screen off: ${e.message}")
             }
