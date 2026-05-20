@@ -302,7 +302,7 @@ class SignalingClient(private val serverUrl: String) {
             while (isActive && !isDestroyed) {
                 delay(15_000)
                 val elapsed = System.currentTimeMillis() - lastPongTime
-                if (elapsed > 10_000) {
+                if (elapsed > 60_000) {
                     Log.w(TAG, "No message from server for ${elapsed}ms, closing connection")
                     val currentWs = ws
                     if (currentWs != null) {

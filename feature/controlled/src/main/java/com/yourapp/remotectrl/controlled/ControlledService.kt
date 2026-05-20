@@ -118,10 +118,16 @@ class ControlledService : Service() {
                 Log.i(TAG, "Network available: $network")
                 networkJob?.cancel()
                 networkJob = serviceScope.launch {
-                    delay(2000)
-                    Log.i(TAG, "Network stabilized: $network, reconnecting...")
-                    signalingClient.notifyNetworkChanged()
-                    checkAndRecover()
+                    delay(3000)
+
+                    val currentState = ConnectionState.getStatusForOwner("controlled")
+                    if (currentState == ConnectionState.STATUS_REGISTERED || currentState == ConnectionState.STATUS_CONNECTED) {
+                        Log.i(TAG, "Network stabilized, but already connected. Skipping forced reconnect.")
+                    } else {
+                        Log.i(TAG, "Network stabilized: $network, forcing reconnect...")
+                        signalingClient.notifyNetworkChanged()
+                        checkAndRecover()
+                    }
                 }
             }
 
@@ -937,19 +943,29 @@ class ControlledService : Service() {
     override fun onBind(intent: Intent?) = null
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        Log.w(TAG, "onTaskRemoved() - restarting service...")
+        Log.w(TAG, "onTaskRemoved() - clean up and schedule restart...")
         if (!userStopped) {
-            val restartIntent = Intent(applicationContext, ControlledService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                applicationContext.startForegroundService(restartIntent)
-            } else {
-                applicationContext.startService(restartIntent)
+            webRtcClient?.dispose()
+            webRtcClient = null
+            if (::signalingClient.isInitialized) {
+                try { signalingClient.disconnect() } catch (_: Exception) {}
             }
+            ConnectionState.update(ConnectionState.STATUS_ERROR, "后台服务重启中", "controlled")
 
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                Log.w(TAG, "onTaskRemoved() - delayed restart")
-                start(applicationContext)
-            }, 3000)
+            val restartIntent = Intent(applicationContext, ControlledService::class.java)
+            val pendingIntent = android.app.PendingIntent.getService(
+                applicationContext,
+                1,
+                restartIntent,
+                android.app.PendingIntent.FLAG_ONE_SHOT or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+            alarmManager.set(
+                android.app.AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                android.os.SystemClock.elapsedRealtime() + 3000,
+                pendingIntent
+            )
         }
     }
 

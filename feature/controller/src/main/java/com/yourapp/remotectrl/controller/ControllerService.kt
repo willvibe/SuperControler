@@ -85,9 +85,15 @@ class ControllerService : Service() {
             override fun onAvailable(network: android.net.Network) {
                 Log.i(TAG, "Network available: $network")
                 serviceScope.launch {
-                    delay(1000)
-                    signalingClient?.notifyNetworkChanged()
-                    checkAndRecover()
+                    delay(3000)
+
+                    val currentState = ConnectionState.getStatusForOwner("controller")
+                    if (currentState == ConnectionState.STATUS_REGISTERED || currentState == ConnectionState.STATUS_CONNECTED) {
+                        Log.i(TAG, "Network stabilized, but already connected. Skipping forced reconnect.")
+                    } else {
+                        signalingClient?.notifyNetworkChanged()
+                        checkAndRecover()
+                    }
                 }
             }
 

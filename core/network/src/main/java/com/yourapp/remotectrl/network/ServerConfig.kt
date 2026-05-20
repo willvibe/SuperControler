@@ -7,7 +7,7 @@ object ServerConfig {
 
     private const val PREFS_NAME = "server_config"
     private const val KEY_SERVER_URL = "server_url"
-    private const val DEFAULT_URL = "wss://launch.cc.cd:8765/ws"
+    private const val DEFAULT_URL = "wss://101.33.80.14:8765/ws"
 
     private var cachedUrl: String? = null
 

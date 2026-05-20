@@ -37,10 +37,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            buildConfigField("String", "SIGNAL_SERVER", "\"wss://launch.cc.cd:8765/ws\"")
+            buildConfigField("String", "SIGNAL_SERVER", "\"wss://101.33.80.14:8765/ws\"")
         }
         debug {
-            buildConfigField("String", "SIGNAL_SERVER", "\"wss://launch.cc.cd:8765/ws\"")
+            buildConfigField("String", "SIGNAL_SERVER", "\"wss://101.33.80.14:8765/ws\"")
         }
     }
 
