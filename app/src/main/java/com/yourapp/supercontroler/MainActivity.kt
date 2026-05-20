@@ -45,7 +45,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var settingsButton: Button
-    private lateinit var mainButton: Button
+    private var mainButton: Button? = null
     private lateinit var serviceStatusText: TextView
     private lateinit var rootStatusText: TextView
     private lateinit var deviceIdText: TextView
@@ -150,9 +150,9 @@ class MainActivity : AppCompatActivity() {
         }
         if (isServiceRunning) {
             if (currentMode == MODE_CONTROLLED) {
-                mainButton.text = "停止被控服务"
+                mainButton?.text = "停止被控服务"
             } else {
-                mainButton.text = "停止主控服务"
+                mainButton?.text = "停止主控服务"
             }
         }
     }
@@ -418,7 +418,7 @@ class MainActivity : AppCompatActivity() {
                 textSize = 18f
                 setOnClickListener { onMainButtonClick() }
             }
-            contentView.addView(mainButton)
+            contentView.addView(mainButton!!)
         }
 
         if (currentMode == MODE_CONTROLLER) {
@@ -560,9 +560,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateModeUI() {
         if (currentMode == MODE_CONTROLLED) {
-            mainButton.text = if (isServiceRunning) "停止被控服务" else "启动被控服务"
+            mainButton?.text = if (isServiceRunning) "停止被控服务" else "启动被控服务"
         } else {
-            mainButton.text = if (isServiceRunning) "停止主控服务" else "启动主控服务"
+            mainButton?.text = if (isServiceRunning) "停止主控服务" else "启动主控服务"
         }
         updateServerUrlDisplay()
     }
@@ -829,7 +829,7 @@ class MainActivity : AppCompatActivity() {
         appendLog("正在启动主控服务...")
         ControllerService.start(this)
         isServiceRunning = true
-        mainButton.text = "停止主控服务"
+        mainButton?.text = "停止主控服务"
         updateInfoRow(serviceStatusText, "服务状态:", "启动中...")
         appendLog("主控服务启动命令已发送")
         setupDevicesCallback()
@@ -839,7 +839,7 @@ class MainActivity : AppCompatActivity() {
         appendLog("正在停止主控服务...")
         ControllerService.stop(this)
         isServiceRunning = false
-        mainButton.text = "启动主控服务"
+        mainButton?.text = "启动主控服务"
         updateInfoRow(serviceStatusText, "服务状态:", "已停止")
         updateInfoRow(connectionStatusText, "连接状态:", "未连接")
         appendLog("主控服务已停止")
@@ -880,7 +880,7 @@ class MainActivity : AppCompatActivity() {
     private fun doStartControlledService() {
         ControlledService.start(this)
         isServiceRunning = true
-        mainButton.text = "停止被控服务"
+        mainButton?.text = "停止被控服务"
         updateInfoRow(serviceStatusText, "服务状态:", "启动中...")
         updateInfoRow(connectionStatusText, "连接状态:", "连接中...")
         appendLog("服务启动命令已发送，等待连接...")
@@ -891,7 +891,7 @@ class MainActivity : AppCompatActivity() {
         isStoppingService = true
         ControlledService.stop(this)
         isServiceRunning = false
-        mainButton.text = "启动被控服务"
+        mainButton?.text = "启动被控服务"
         updateInfoRow(serviceStatusText, "服务状态:", "已停止")
         updateInfoRow(connectionStatusText, "连接状态:", "未连接")
         appendLog("服务已停止")
@@ -911,9 +911,9 @@ class MainActivity : AppCompatActivity() {
         if (controlledRunning || controllerRunning) {
             isServiceRunning = true
             if (currentMode == MODE_CONTROLLED) {
-                mainButton.text = "停止被控服务"
+                mainButton?.text = "停止被控服务"
             } else {
-                mainButton.text = "停止主控服务"
+                mainButton?.text = "停止主控服务"
             }
             updateInfoRow(connectionStatusText, "连接状态:", msg.ifEmpty { "连接中..." })
             updateServiceStatusFromConnection(currentStatus)
