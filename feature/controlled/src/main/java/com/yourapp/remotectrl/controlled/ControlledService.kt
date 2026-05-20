@@ -290,11 +290,13 @@ class ControlledService : Service() {
         val state = ConnectionState.getStatusForOwner("controlled")
         Log.w(TAG, "Watchdog: current state = $state, videoCaptureStarted=$videoCaptureStarted, webRtc=${webRtcClient != null}")
 
-        if (!videoCaptureStarted && webRtcClient == null && !projectionRequestInProgress && !RootManager.isRequestInProgress()) {
-            Log.e(TAG, "Watchdog: Video capture NOT started, attempting to restart...")
-            serviceScope.launch {
-                delay(1000)
-                requestMediaProjection()
+        if (state == ConnectionState.STATUS_CONNECTED) {
+            if (!videoCaptureStarted && webRtcClient == null && !projectionRequestInProgress && !RootManager.isRequestInProgress()) {
+                Log.e(TAG, "Watchdog: Video capture NOT started while CONNECTED, attempting to restart...")
+                serviceScope.launch {
+                    delay(1000)
+                    requestMediaProjection()
+                }
             }
         }
 
