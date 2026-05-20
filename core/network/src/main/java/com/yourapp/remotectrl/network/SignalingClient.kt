@@ -236,7 +236,7 @@ class SignalingClient(private val serverUrl: String) {
                 if (isDestroyed || gen != wsGeneration) return
                 if (code == 1000 && (reason == "disconnect" || reason == "reconnect" || reason == "stale")) return
                 scope.launch {
-                    setState(State.Error("连接关闭: code=$code"))
+                    setState(State.Error("连接已断开, 极速重连中..."))
                     scheduleReconnect()
                 }
             }
@@ -249,7 +249,12 @@ class SignalingClient(private val serverUrl: String) {
                     useFallbackUrl = true
                 }
                 scope.launch {
-                    setState(State.Error("连接失败: ${t.javaClass.simpleName} - ${t.message}"))
+                    val shortError = if (msg.contains("Connection reset") || msg.contains("broken pipe") || msg.contains("Software caused connection abort")) {
+                        "网络中断"
+                    } else {
+                        t.javaClass.simpleName
+                    }
+                    setState(State.Error("掉线重连中... ($shortError)"))
                     scheduleReconnect()
                 }
             }
@@ -309,7 +314,7 @@ class SignalingClient(private val serverUrl: String) {
                         try { currentWs.close(1001, "health check timeout") } catch (_: Exception) {}
                     }
                     ws = null
-                    setState(State.Error("连接超时: 服务器无响应"))
+                    setState(State.Error("心跳超时, 极速重连中..."))
                     scheduleReconnect()
                     break
                 }
@@ -535,7 +540,7 @@ class SignalingClient(private val serverUrl: String) {
     private fun scheduleReconnect() {
         if (isDestroyed) return
         reconnectJob?.cancel()
-        val delayMs = if (reconnectAttempts == 0) 500L else minOf(1000L * (1L shl minOf(reconnectAttempts, 6)), 30_000L)
+        val delayMs = if (reconnectAttempts == 0) 500L else 3000L
         reconnectAttempts++
         Log.i(TAG, "Reconnect in ${delayMs}ms (attempt #$reconnectAttempts)")
         reconnectJob = scope.launch {
