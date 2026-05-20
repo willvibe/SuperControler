@@ -45,7 +45,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var settingsButton: Button
-    private var mainButton: Button? = null
     private lateinit var serviceStatusText: TextView
     private lateinit var rootStatusText: TextView
     private lateinit var deviceIdText: TextView
@@ -148,13 +147,6 @@ class MainActivity : AppCompatActivity() {
                 updateInfoRow(serviceStatusText, "服务状态:", "连接错误: $errMsg")
             }
         }
-        if (isServiceRunning) {
-            if (currentMode == MODE_CONTROLLED) {
-                mainButton?.text = "停止被控服务"
-            } else {
-                mainButton?.text = "停止主控服务"
-            }
-        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -170,6 +162,8 @@ class MainActivity : AppCompatActivity() {
 
         if (currentMode == MODE_CONTROLLED) {
             autoStartControlledServiceIfNeeded()
+        } else {
+            autoStartControllerServiceIfNeeded()
         }
     }
 
@@ -182,6 +176,16 @@ class MainActivity : AppCompatActivity() {
         }
         Log.i("MainActivity", "Auto-starting ControlledService")
         startControlledService()
+    }
+
+    private fun autoStartControllerServiceIfNeeded() {
+        if (ControllerService.getInstance() != null) {
+            Log.i("MainActivity", "ControllerService already running")
+            isServiceRunning = true
+            return
+        }
+        Log.i("MainActivity", "Auto-starting ControllerService")
+        startControllerService()
     }
 
     override fun onStart() {
@@ -285,7 +289,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildUI() {
         val rootView = ScrollView(this).apply {
-            setBackgroundColor(Color.parseColor("#121212"))
+            setBackgroundColor(Color.WHITE)
         }
         val contentView = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -301,7 +305,7 @@ class MainActivity : AppCompatActivity() {
         val titleText = TextView(this).apply {
             text = "SuperControler"
             textSize = 24f
-            setTextColor(Color.parseColor("#82B1FF"))
+            setTextColor(Color.parseColor("#1565C0"))
         }
         headerLayout.addView(titleText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
 
@@ -324,6 +328,7 @@ class MainActivity : AppCompatActivity() {
         deviceIdText = TextView(this).apply {
             text = "设备 ID: 加载中..."
             textSize = 15f
+            setTextColor(Color.BLACK)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         deviceIdRow.addView(deviceIdText)
@@ -358,6 +363,7 @@ class MainActivity : AppCompatActivity() {
         rootStatusText = TextView(this).apply {
             text = "Root权限: 检查中..."
             textSize = 15f
+            setTextColor(Color.BLACK)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         rootRow.addView(rootStatusText)
@@ -378,6 +384,7 @@ class MainActivity : AppCompatActivity() {
         projectionStatusText = TextView(this).apply {
             text = "屏幕录制权限: 检查中..."
             textSize = 15f
+            setTextColor(Color.BLACK)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         projectionRow.addView(projectionStatusText)
@@ -398,6 +405,7 @@ class MainActivity : AppCompatActivity() {
         val logStatusText = TextView(this).apply {
             text = "日志导出: 点击右侧按钮"
             textSize = 15f
+            setTextColor(Color.BLACK)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         logRow.addView(logStatusText)
@@ -420,6 +428,7 @@ class MainActivity : AppCompatActivity() {
         val logLabel = TextView(this).apply {
             text = "日志"
             textSize = 14f
+            setTextColor(Color.BLACK)
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setPadding(0, dp(20), 0, dp(8))
         }
@@ -428,7 +437,7 @@ class MainActivity : AppCompatActivity() {
         logScrollView = ScrollView(this)
         logText = TextView(this).apply {
             textSize = 11f
-            setTextColor(Color.parseColor("#81C784"))
+            setTextColor(Color.parseColor("#333333"))
             setPadding(dp(8), dp(8), dp(8), dp(8))
         }
         logScrollView.addView(logText)
@@ -449,6 +458,7 @@ class MainActivity : AppCompatActivity() {
         val label = TextView(this).apply {
             text = "当前模式:"
             textSize = 14f
+            setTextColor(Color.BLACK)
         }
         layout.addView(label)
 
@@ -475,6 +485,7 @@ class MainActivity : AppCompatActivity() {
         val sectionLabel = TextView(this).apply {
             text = "在线设备"
             textSize = 14f
+            setTextColor(Color.BLACK)
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         }
         labelLayout.addView(sectionLabel, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
@@ -530,7 +541,7 @@ class MainActivity : AppCompatActivity() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(16), dp(16), dp(16))
-            setBackgroundColor(Color.parseColor("#1E1E2E"))
+            setBackgroundColor(Color.parseColor("#F5F5F5"))
         }
     }
 
@@ -538,6 +549,7 @@ class MainActivity : AppCompatActivity() {
         return TextView(this).apply {
             text = "$label $value"
             textSize = 15f
+            setTextColor(Color.BLACK)
             setPadding(0, dp(6), 0, dp(6))
         }
     }
@@ -551,11 +563,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateModeUI() {
-        if (currentMode == MODE_CONTROLLED) {
-            mainButton?.text = if (isServiceRunning) "停止被控服务" else "启动被控服务"
-        } else {
-            mainButton?.text = if (isServiceRunning) "停止主控服务" else "启动主控服务"
-        }
         updateServerUrlDisplay()
     }
 
@@ -683,7 +690,7 @@ class MainActivity : AppCompatActivity() {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(dp(8), dp(8), dp(8), dp(8))
-            setBackgroundColor(Color.parseColor("#2D2D3D"))
+            setBackgroundColor(Color.parseColor("#EEEEEE"))
         }
 
         val normalizedId = id.trim().uppercase()
@@ -705,12 +712,12 @@ class MainActivity : AppCompatActivity() {
         infoLayout.addView(TextView(this).apply {
             text = name
             textSize = 14f
-            setTextColor(Color.WHITE)
+            setTextColor(Color.BLACK)
         })
         infoLayout.addView(TextView(this).apply {
             text = "ID: $id"
             textSize = 11f
-            setTextColor(Color.parseColor("#AAAAAA"))
+            setTextColor(Color.parseColor("#666666"))
         })
 
         row.addView(onlineIndicator)
@@ -746,7 +753,7 @@ class MainActivity : AppCompatActivity() {
         if (allOnlineDevices.isEmpty()) {
             val emptyText = TextView(this).apply {
                 text = "暂无在线设备"
-                setTextColor(Color.parseColor("#AAAAAA"))
+                setTextColor(Color.parseColor("#666666"))
                 textSize = 12f
             }
             devicesContainer.addView(emptyText)
@@ -821,7 +828,6 @@ class MainActivity : AppCompatActivity() {
         appendLog("正在启动主控服务...")
         ControllerService.start(this)
         isServiceRunning = true
-        mainButton?.text = "停止主控服务"
         updateInfoRow(serviceStatusText, "服务状态:", "启动中...")
         appendLog("主控服务启动命令已发送")
         setupDevicesCallback()
@@ -831,7 +837,6 @@ class MainActivity : AppCompatActivity() {
         appendLog("正在停止主控服务...")
         ControllerService.stop(this)
         isServiceRunning = false
-        mainButton?.text = "启动主控服务"
         updateInfoRow(serviceStatusText, "服务状态:", "已停止")
         updateInfoRow(connectionStatusText, "连接状态:", "未连接")
         appendLog("主控服务已停止")
@@ -872,7 +877,6 @@ class MainActivity : AppCompatActivity() {
     private fun doStartControlledService() {
         ControlledService.start(this)
         isServiceRunning = true
-        mainButton?.text = "停止被控服务"
         updateInfoRow(serviceStatusText, "服务状态:", "启动中...")
         updateInfoRow(connectionStatusText, "连接状态:", "连接中...")
         appendLog("服务启动命令已发送，等待连接...")
@@ -883,7 +887,6 @@ class MainActivity : AppCompatActivity() {
         isStoppingService = true
         ControlledService.stop(this)
         isServiceRunning = false
-        mainButton?.text = "启动被控服务"
         updateInfoRow(serviceStatusText, "服务状态:", "已停止")
         updateInfoRow(connectionStatusText, "连接状态:", "未连接")
         appendLog("服务已停止")
@@ -902,11 +905,6 @@ class MainActivity : AppCompatActivity() {
 
         if (controlledRunning || controllerRunning) {
             isServiceRunning = true
-            if (currentMode == MODE_CONTROLLED) {
-                mainButton?.text = "停止被控服务"
-            } else {
-                mainButton?.text = "停止主控服务"
-            }
             updateInfoRow(connectionStatusText, "连接状态:", msg.ifEmpty { "连接中..." })
             updateServiceStatusFromConnection(currentStatus)
             appendLog("检测到服务正在运行，状态: ${msg.ifEmpty { "连接中..." }}")
