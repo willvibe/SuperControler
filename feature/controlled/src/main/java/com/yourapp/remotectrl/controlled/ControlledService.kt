@@ -645,7 +645,7 @@ class ControlledService : Service() {
         if (typeStr == "DISCONNECT") {
             Log.i(TAG, "Received DISCONNECT message from controller, closing WebRTC connection")
 
-            webRtcClient?.dispose()
+            val clientToDispose = webRtcClient
             webRtcClient = null
             videoCaptureStarted = false
             projectionRequestInProgress = false
@@ -657,6 +657,15 @@ class ControlledService : Service() {
             signalingClient.resetPeerState()
             ConnectionState.update(ConnectionState.STATUS_REGISTERED, "已注册，等待控制", "controlled")
             updateNotification("已注册，等待控制")
+
+            Handler(Looper.getMainLooper()).post {
+                try {
+                    clientToDispose?.dispose()
+                    Log.i(TAG, "WebRtcClient safely disposed on Main Thread")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error disposing WebRtcClient: ${e.message}")
+                }
+            }
             return
         }
 
