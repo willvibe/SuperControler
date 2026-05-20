@@ -410,7 +410,19 @@ class ControlledService : Service() {
         Log.i(TAG, "Launching MediaProjectionActivity to get Intent for WebRTC")
         val intent = Intent(this, MediaProjectionActivity::class.java)
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        startActivity(intent)
+
+        if (RootManager.isRootAvailable()) {
+            try {
+                val comp = android.content.ComponentName(this, MediaProjectionActivity::class.java)
+                com.topjohnwu.superuser.Shell.cmd("am start -n ${comp.flattenToString()}").submit()
+                Log.i(TAG, "Launched MediaProjectionActivity via Root shell (bypassing background restrictions)")
+            } catch (e: Exception) {
+                Log.e(TAG, "Root launch failed, falling back to startActivity: ${e.message}")
+                startActivity(intent)
+            }
+        } else {
+            startActivity(intent)
+        }
     }
 
     fun setMediaProjectionResult(code: Int, data: Intent) {

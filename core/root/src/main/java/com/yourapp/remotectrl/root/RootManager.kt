@@ -305,9 +305,7 @@ object RootManager {
         try {
             val packageName = context.packageName
             Shell.cmd(
-                "pm grant $packageName android.permission.CAPTURE_VIDEO_OUTPUT",
-                "pm grant $packageName android.permission.CAPTURE_SECURE_VIDEO_OUTPUT",
-                "pm grant $packageName android.permission.WRITE_SECURE_SETTINGS",
+                "pm grant $packageName android.permission.WRITE_SECURE_SETTINGS 2>/dev/null || true",
                 "dumpsys deviceidle whitelist +$packageName",
                 "settings put global app_standby_enabled 0"
             ).submit { result ->
