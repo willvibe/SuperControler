@@ -636,6 +636,7 @@ class ControlledService : Service() {
             pendingSdpContent = null
             pendingSdpType = null
 
+            signalingClient.resetPeerState()
             ConnectionState.update(ConnectionState.STATUS_REGISTERED, "已注册，等待控制", "controlled")
             updateNotification("已注册，等待控制")
             return

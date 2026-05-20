@@ -504,6 +504,7 @@ class ControllerService : Service() {
         webRtcClient = null
         pendingTargetId = null
         isConnecting = false
+        signalingClient?.resetPeerState()
         ConnectionState.update(ConnectionState.STATUS_REGISTERED, "已注册，等待控制", "controller")
         setActivityCallbacks(null, null, null)
         Log.i(TAG, "WebRTC reset done, signaling connection kept alive")

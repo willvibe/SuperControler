@@ -127,11 +127,22 @@ class SignalingClient(private val serverUrl: String) {
         this.pendingConnectPin = pin
 
         val currentWs = ws
-        if (currentWs != null && state is State.Registered) {
+        if (currentWs != null && (state is State.Registered || state is State.Connected)) {
             sendConnectMessage(currentWs, targetId, pin)
         } else {
             Log.w(TAG, "Not registered yet, queuing connect request for target=$targetId")
             pendingConnectTargetId = targetId
+        }
+    }
+
+    fun resetPeerState() {
+        Log.i(TAG, "resetPeerState() called")
+        peerId = ""
+        pendingConnectTargetId = null
+        scope.launch {
+            if (state is State.Connected) {
+                setState(State.Registered)
+            }
         }
     }
 
@@ -291,7 +302,7 @@ class SignalingClient(private val serverUrl: String) {
             while (isActive && !isDestroyed) {
                 delay(15_000)
                 val elapsed = System.currentTimeMillis() - lastPongTime
-                if (elapsed > 120_000) {
+                if (elapsed > 10_000) {
                     Log.w(TAG, "No message from server for ${elapsed}ms, closing connection")
                     val currentWs = ws
                     if (currentWs != null) {
