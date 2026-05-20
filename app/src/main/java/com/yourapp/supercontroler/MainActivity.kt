@@ -414,14 +414,6 @@ class MainActivity : AppCompatActivity() {
         contentView.addView(createSpacer(dp(12)))
 
         if (currentMode == MODE_CONTROLLER) {
-            mainButton = Button(this).apply {
-                textSize = 18f
-                setOnClickListener { onMainButtonClick() }
-            }
-            contentView.addView(mainButton!!)
-        }
-
-        if (currentMode == MODE_CONTROLLER) {
             contentView.addView(createDevicesSection())
         }
 

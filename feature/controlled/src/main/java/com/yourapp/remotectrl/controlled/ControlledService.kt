@@ -626,7 +626,7 @@ class ControlledService : Service() {
 
         if (typeStr == "DISCONNECT") {
             Log.i(TAG, "Received DISCONNECT message from controller, closing WebRTC connection")
-            turnScreenOffIfNeeded()
+
             webRtcClient?.dispose()
             webRtcClient = null
             videoCaptureStarted = false
@@ -635,9 +635,8 @@ class ControlledService : Service() {
             pendingSdpFromId = null
             pendingSdpContent = null
             pendingSdpType = null
-            MediaProjectionHelper.clearCachedPermission()
-            ConnectionState.reset("controlled")
-            serviceScope.launch { signalingClient.connect(DeviceIdManager.getDeviceId(this@ControlledService)) }
+
+            ConnectionState.update(ConnectionState.STATUS_REGISTERED, "已注册，等待控制", "controlled")
             updateNotification("已注册，等待控制")
             return
         }
@@ -778,7 +777,6 @@ class ControlledService : Service() {
             try {
                 val commands = listOf(
                     "input keyevent KEYCODE_WAKEUP",
-                    "input keyevent KEYCODE_POWER",
                     "settings put system screen_brightness 128"
                 )
                 for (cmd in commands) {
@@ -788,7 +786,7 @@ class ControlledService : Service() {
 
                 Handler(Looper.getMainLooper()).postDelayed({
                     dismissKeyguardIfNeeded()
-                }, 800)
+                }, 1200)
             } catch (e: Exception) {
                 Log.e(TAG, "Root wake-up failed: ${e.message}")
             }
@@ -802,7 +800,6 @@ class ControlledService : Service() {
                 "SuperControler::ScreenWakeLock"
             )
             screenWakeLock.acquire(5000L)
-            Log.i(TAG, "SCREEN_BRIGHT_WAKE_LOCK acquired for 5s")
             try {
                 screenWakeLock.release()
             } catch (_: Exception) {}
@@ -819,12 +816,11 @@ class ControlledService : Service() {
                 try {
                     val screenW = screenWidth.coerceAtLeast(1080)
                     val screenH = screenHeight.coerceAtLeast(1920)
-                    val startY = (screenH * 0.75).toInt()
-                    val endY = (screenH * 0.25).toInt()
+                    val startY = (screenH * 0.85).toInt()
+                    val endY = (screenH * 0.15).toInt()
                     val centerX = screenW / 2
 
                     val commands = listOf(
-                        "input keyevent KEYCODE_MENU",
                         "input swipe $centerX $startY $centerX $endY 300"
                     )
                     for (cmd in commands) {
