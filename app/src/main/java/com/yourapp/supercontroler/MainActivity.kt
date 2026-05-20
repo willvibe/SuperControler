@@ -167,6 +167,21 @@ class MainActivity : AppCompatActivity() {
         checkServiceRunning()
         setupDevicesCallback()
         registerDevicesBroadcastReceiver()
+
+        if (currentMode == MODE_CONTROLLED) {
+            autoStartControlledServiceIfNeeded()
+        }
+    }
+
+    private fun autoStartControlledServiceIfNeeded() {
+        if (com.yourapp.remotectrl.controlled.ControlledService.getInstance() != null) {
+            Log.i("MainActivity", "ControlledService already running")
+            isServiceRunning = true
+            updateInfoRow(serviceStatusText, "服务状态:", "运行中")
+            return
+        }
+        Log.i("MainActivity", "Auto-starting ControlledService")
+        startControlledService()
     }
 
     override fun onStart() {
@@ -398,11 +413,13 @@ class MainActivity : AppCompatActivity() {
 
         contentView.addView(createSpacer(dp(12)))
 
-        mainButton = Button(this).apply {
-            textSize = 18f
-            setOnClickListener { onMainButtonClick() }
+        if (currentMode == MODE_CONTROLLER) {
+            mainButton = Button(this).apply {
+                textSize = 18f
+                setOnClickListener { onMainButtonClick() }
+            }
+            contentView.addView(mainButton)
         }
-        contentView.addView(mainButton)
 
         if (currentMode == MODE_CONTROLLER) {
             contentView.addView(createDevicesSection())

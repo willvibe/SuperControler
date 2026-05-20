@@ -495,8 +495,7 @@ class ControlledService : Service() {
                     wakeUpScreenIfNeeded()
                     sendScreenInfo()
                 } else {
-                    Log.i(TAG, "WebRTC disconnected, turning screen off and resetting state")
-                    turnScreenOffIfNeeded()
+                    Log.i(TAG, "WebRTC disconnected, resetting state (keeping screen on)")
                     webRtcClient?.dispose()
                     webRtcClient = null
                     videoCaptureStarted = false
@@ -783,8 +782,7 @@ class ControlledService : Service() {
                     "settings put system screen_brightness 128"
                 )
                 for (cmd in commands) {
-                    // 【修复7】用 submit 替代 exec，避免阻塞主线程
-                    com.topjohnwu.superuser.Shell.cmd(cmd).submit()
+                    com.topjohnwu.superuser.Shell.cmd(cmd).exec()
                 }
                 Log.i(TAG, "Screen wake-up commands executed via root")
 
@@ -830,8 +828,7 @@ class ControlledService : Service() {
                         "input swipe $centerX $startY $centerX $endY 300"
                     )
                     for (cmd in commands) {
-                        // 【修复7】用 submit 替代 exec
-                        com.topjohnwu.superuser.Shell.cmd(cmd).submit()
+                        com.topjohnwu.superuser.Shell.cmd(cmd).exec()
                     }
                     Log.i(TAG, "Keyguard dismiss swipe executed via root")
                 } catch (e: Exception) {

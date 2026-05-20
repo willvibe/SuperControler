@@ -526,25 +526,23 @@ class ControllerActivity : AppCompatActivity() {
     }
 
     private fun disconnectAndFinish() {
-        Log.i(TAG, "User requested disconnect and exit")
+        Log.i(TAG, "Disconnecting WebRTC and returning to device list")
         val service = ControllerService.getInstance() ?: run {
             finish()
             return
         }
 
-        lifecycleScope.launch {
+        serviceScope.launch {
             withContext(Dispatchers.IO) {
                 try {
-                    Log.i(TAG, "Sending disconnect message to peer...")
                     service.webRtcClient?.disconnectPeer()
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error sending disconnect message: ${e.message}")
+                    Log.e(TAG, "Error sending disconnect: ${e.message}")
                 }
 
                 try {
                     service.webRtcClient?.dispose()
                     service.webRtcClient = null
-                    Log.i(TAG, "WebRTC disposed successfully")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error disposing WebRTC: ${e.message}")
                 }
@@ -601,11 +599,6 @@ class ControllerActivity : AppCompatActivity() {
         if (service != null && isFinishing) {
             service.setActivityCallbacks(null, null, null)
             service.activityScreenInfoCallback = null
-
-            lifecycleScope.launch(Dispatchers.IO) {
-                Log.i(TAG, "ControllerActivity destroyed, disconnecting WebRTC (keeping signaling)")
-                service.disconnectWebRtcAndReset()
-            }
         }
 
         serviceScope.cancel()
