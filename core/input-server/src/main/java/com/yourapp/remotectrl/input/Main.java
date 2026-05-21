@@ -8,14 +8,19 @@ import android.view.InputEvent;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import java.io.BufferedReader;
+import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.Method;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 public class Main {
     private static Method injectMethod;
     private static Object inputManager;
     private static int realDeviceId;
     private static Method setDeviceIdMethod;
+    private static KernelTouchInjector kernelInjector;
+    private static boolean useKernelInjection = false;
 
     public static void main(String[] args) {
         if (args.length < 1) {
@@ -23,14 +28,13 @@ public class Main {
             return;
         }
 
-        // 【修复1】绕过 Android 9+ 的 Hidden API 限制
         try {
             Method getRuntimeMethod = Class.forName("dalvik.system.VMRuntime").getDeclaredMethod("getRuntime");
             Object vmRuntime = getRuntimeMethod.invoke(null);
             Method setHiddenApiExemptionsMethod = vmRuntime.getClass().getDeclaredMethod("setHiddenApiExemptions", String[].class);
             setHiddenApiExemptionsMethod.invoke(vmRuntime, new Object[]{new String[]{"L"}});
         } catch (Exception e) {
-            e.printStackTrace(); // 忽略旧版本不存在此方法的异常
+            e.printStackTrace();
         }
 
         String authToken = args[0];
@@ -44,10 +48,19 @@ public class Main {
             setDeviceIdMethod = null;
         }
 
+        String touchNode = findTouchScreenNode();
+        try {
+            kernelInjector = new KernelTouchInjector(touchNode);
+            useKernelInjection = true;
+            System.out.println("Kernel Touch Injector initialized on: " + touchNode);
+        } catch (Exception e) {
+            useKernelInjection = false;
+            System.err.println("Kernel injection failed, falling back to InputManager: " + e.getMessage());
+        }
+
         try (LocalServerSocket serverSocket = new LocalServerSocket("supercontroler_input")) {
             while (true) {
                 LocalSocket clientSocket = serverSocket.accept();
-                // 【修复5】开辟新线程处理单一客户端，防止阻塞主 accept 循环
                 new Thread(() -> handleClient(clientSocket, authToken)).start();
             }
         } catch (Exception e) {
@@ -55,7 +68,6 @@ public class Main {
         }
     }
 
-    // 【修复5】独立方法处理客户端连接，加上 finally 关闭
     private static void handleClient(LocalSocket clientSocket, String authToken) {
         try {
             BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
@@ -117,6 +129,15 @@ public class Main {
     }
 
     private static void injectTap(float x, float y) {
+        if (useKernelInjection) {
+            try {
+                kernelInjector.injectTap((int) x, (int) y);
+                return;
+            } catch (Exception e) {
+                System.err.println("Kernel tap failed, fallback: " + e.getMessage());
+            }
+        }
+
         long downTime = SystemClock.uptimeMillis();
 
         MotionEvent downEvent = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0);
@@ -139,6 +160,15 @@ public class Main {
     }
 
     private static void injectSwipe(float x1, float y1, float x2, float y2, int durationMs) {
+        if (useKernelInjection) {
+            try {
+                kernelInjector.injectSwipe((int) x1, (int) y1, (int) x2, (int) y2, durationMs);
+                return;
+            } catch (Exception e) {
+                System.err.println("Kernel swipe failed, fallback: " + e.getMessage());
+            }
+        }
+
         long downTime = SystemClock.uptimeMillis();
 
         MotionEvent downEvent = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x1, y1, 0);
@@ -175,6 +205,15 @@ public class Main {
     }
 
     private static void injectLongPress(float x, float y) {
+        if (useKernelInjection) {
+            try {
+                kernelInjector.injectLongPress((int) x, (int) y);
+                return;
+            } catch (Exception e) {
+                System.err.println("Kernel longpress failed, fallback: " + e.getMessage());
+            }
+        }
+
         long downTime = SystemClock.uptimeMillis();
 
         MotionEvent downEvent = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0);
@@ -195,6 +234,15 @@ public class Main {
     }
 
     private static void injectScroll(float x, float y, float dx, float dy) {
+        if (useKernelInjection) {
+            try {
+                kernelInjector.injectSwipe((int) x, (int) y, (int) (x + dx), (int) (y + dy), 200);
+                return;
+            } catch (Exception e) {
+                System.err.println("Kernel scroll failed, fallback: " + e.getMessage());
+            }
+        }
+
         long downTime = SystemClock.uptimeMillis();
 
         MotionEvent downEvent = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0);
@@ -273,6 +321,139 @@ public class Main {
             }
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    static String findTouchScreenNode() {
+        try {
+            Process process = Runtime.getRuntime().exec("getevent -pl");
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String line;
+            String currentNode = null;
+
+            while ((line = reader.readLine()) != null) {
+                if (line.startsWith("add device")) {
+                    int idx = line.indexOf("/dev/input/event");
+                    if (idx >= 0) {
+                        currentNode = line.substring(idx).trim();
+                    }
+                } else if (line.contains("ABS_MT_POSITION_X") && currentNode != null) {
+                    reader.close();
+                    process.destroy();
+                    return currentNode;
+                }
+            }
+            reader.close();
+            process.destroy();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return "/dev/input/event2";
+    }
+
+    static class KernelTouchInjector {
+        private FileOutputStream out;
+
+        private static final short EV_SYN = 0x00;
+        private static final short EV_KEY = 0x01;
+        private static final short EV_ABS = 0x03;
+
+        private static final short SYN_REPORT = 0x00;
+        private static final short BTN_TOUCH = 0x14a;
+        private static final short ABS_MT_SLOT = 0x2f;
+        private static final short ABS_MT_TRACKING_ID = 0x39;
+        private static final short ABS_MT_POSITION_X = 0x35;
+        private static final short ABS_MT_POSITION_Y = 0x36;
+
+        public KernelTouchInjector(String deviceNode) throws Exception {
+            this.out = new FileOutputStream(deviceNode);
+        }
+
+        private void sendEvent(short type, short code, int value) throws Exception {
+            ByteBuffer buffer = ByteBuffer.allocate(24);
+            buffer.order(ByteOrder.LITTLE_ENDIAN);
+
+            long time = System.currentTimeMillis();
+            long sec = time / 1000;
+            long usec = (time % 1000) * 1000;
+
+            buffer.putLong(sec);
+            buffer.putLong(usec);
+            buffer.putShort(type);
+            buffer.putShort(code);
+            buffer.putInt(value);
+
+            out.write(buffer.array());
+        }
+
+        public void injectTap(int x, int y) throws Exception {
+            int jitterX = x + (int)(Math.random() * 5 - 2);
+            int jitterY = y + (int)(Math.random() * 5 - 2);
+
+            sendEvent(EV_ABS, ABS_MT_SLOT, 0);
+            sendEvent(EV_ABS, ABS_MT_TRACKING_ID, (int)(Math.random() * 10000) + 1);
+            sendEvent(EV_ABS, ABS_MT_POSITION_X, jitterX);
+            sendEvent(EV_ABS, ABS_MT_POSITION_Y, jitterY);
+            sendEvent(EV_KEY, BTN_TOUCH, 1);
+            sendEvent(EV_SYN, SYN_REPORT, 0);
+
+            Thread.sleep(45 + (int)(Math.random() * 20));
+
+            sendEvent(EV_ABS, ABS_MT_SLOT, 0);
+            sendEvent(EV_ABS, ABS_MT_TRACKING_ID, -1);
+            sendEvent(EV_KEY, BTN_TOUCH, 0);
+            sendEvent(EV_SYN, SYN_REPORT, 0);
+
+            out.flush();
+        }
+
+        public void injectSwipe(int x1, int y1, int x2, int y2, int durationMs) throws Exception {
+            int steps = Math.max(durationMs / 16, 1);
+            int stepTime = durationMs / steps;
+
+            sendEvent(EV_ABS, ABS_MT_SLOT, 0);
+            sendEvent(EV_ABS, ABS_MT_TRACKING_ID, (int)(Math.random() * 10000) + 1);
+            sendEvent(EV_ABS, ABS_MT_POSITION_X, x1);
+            sendEvent(EV_ABS, ABS_MT_POSITION_Y, y1);
+            sendEvent(EV_KEY, BTN_TOUCH, 1);
+            sendEvent(EV_SYN, SYN_REPORT, 0);
+            out.flush();
+
+            for (int i = 1; i <= steps; i++) {
+                Thread.sleep(stepTime);
+                int cx = x1 + (x2 - x1) * i / steps;
+                int cy = y1 + (y2 - y1) * i / steps;
+
+                sendEvent(EV_ABS, ABS_MT_POSITION_X, cx);
+                sendEvent(EV_ABS, ABS_MT_POSITION_Y, cy);
+                sendEvent(EV_SYN, SYN_REPORT, 0);
+                out.flush();
+            }
+
+            Thread.sleep(stepTime);
+            sendEvent(EV_ABS, ABS_MT_SLOT, 0);
+            sendEvent(EV_ABS, ABS_MT_TRACKING_ID, -1);
+            sendEvent(EV_KEY, BTN_TOUCH, 0);
+            sendEvent(EV_SYN, SYN_REPORT, 0);
+            out.flush();
+        }
+
+        public void injectLongPress(int x, int y) throws Exception {
+            sendEvent(EV_ABS, ABS_MT_SLOT, 0);
+            sendEvent(EV_ABS, ABS_MT_TRACKING_ID, (int)(Math.random() * 10000) + 1);
+            sendEvent(EV_ABS, ABS_MT_POSITION_X, x);
+            sendEvent(EV_ABS, ABS_MT_POSITION_Y, y);
+            sendEvent(EV_KEY, BTN_TOUCH, 1);
+            sendEvent(EV_SYN, SYN_REPORT, 0);
+            out.flush();
+
+            Thread.sleep(600);
+
+            sendEvent(EV_ABS, ABS_MT_SLOT, 0);
+            sendEvent(EV_ABS, ABS_MT_TRACKING_ID, -1);
+            sendEvent(EV_KEY, BTN_TOUCH, 0);
+            sendEvent(EV_SYN, SYN_REPORT, 0);
+            out.flush();
         }
     }
 }

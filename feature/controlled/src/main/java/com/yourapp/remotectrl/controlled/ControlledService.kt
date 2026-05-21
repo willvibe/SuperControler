@@ -559,9 +559,27 @@ class ControlledService : Service() {
 
         signalingClient.onPeerConnected = { peerId, role ->
             Log.i(TAG, "onPeerConnected: peerId=$peerId, role=$role")
+
             if (webRtcClient != null) {
-                webRtcClient?.peerId = peerId
-            } else if (MediaProjectionHelper.hasCachedPermission()) {
+                Log.w(TAG, "Detected controller reconnect, disposing old WebRTC instance to prevent native crash")
+                val oldClient = webRtcClient
+                webRtcClient = null
+                videoCaptureStarted = false
+                pendingIceCandidates.clear()
+                pendingSdpFromId = null
+                pendingSdpType = null
+                pendingSdpContent = null
+                Handler(Looper.getMainLooper()).post {
+                    try {
+                        oldClient?.dispose()
+                        Log.i(TAG, "Old WebRtcClient safely disposed on Main Thread")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error disposing old WebRtcClient: ${e.message}")
+                    }
+                }
+            }
+
+            if (MediaProjectionHelper.hasCachedPermission()) {
                 val data = MediaProjectionHelper.getCachedProjectionData()
                 if (data != null) {
                     Log.i(TAG, "onPeerConnected: re-initializing WebRtcClient with cached MediaProjection")
