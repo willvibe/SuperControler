@@ -54,7 +54,7 @@ public class Main {
         try {
             kernelInjector = new KernelTouchInjector(touchNode);
             useKernelInjection = true;
-            System.out.println("Kernel Touch Injector initialized on: " + touchNode);
+            System.out.println("Kernel Touch Injector initialized on: " + touchNode + " (64bit=" + kernelInjector.is64Bit + ")");
         } catch (Exception e) {
             useKernelInjection = false;
             System.err.println("Kernel injection failed, falling back to InputManager: " + e.getMessage());
@@ -294,6 +294,15 @@ public class Main {
     }
 
     private static void injectKey(int keyCode) {
+        if (shouldUseKernel()) {
+            try {
+                kernelInjector.injectKey(keyCode);
+                return;
+            } catch (Exception e) {
+                onKernelFail("key", e);
+            }
+        }
+
         long downTime = SystemClock.uptimeMillis();
 
         KeyEvent downEvent = new KeyEvent(downTime, downTime, KeyEvent.ACTION_DOWN, keyCode, 0);
@@ -367,10 +376,40 @@ public class Main {
         return "/dev/input/event2";
     }
 
+    static String findKeyEventNode() {
+        Process process = null;
+        BufferedReader reader = null;
+        try {
+            process = Runtime.getRuntime().exec("getevent -pl");
+            reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String line;
+            String currentNode = null;
+
+            while ((line = reader.readLine()) != null) {
+                if (line.startsWith("add device")) {
+                    int idx = line.indexOf("/dev/input/event");
+                    if (idx >= 0) {
+                        currentNode = line.substring(idx).trim();
+                    }
+                } else if (line.contains("KEY_VOLUMEUP") && currentNode != null) {
+                    return currentNode;
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            if (reader != null) { try { reader.close(); } catch (Exception ignored) {} }
+            if (process != null) { process.destroy(); try { process.waitFor(); } catch (Exception ignored) {} }
+        }
+        return null;
+    }
+
     static class KernelTouchInjector {
         private final FileOutputStream out;
-        private final byte[] bufferArray = new byte[24];
-        private final ByteBuffer buffer = ByteBuffer.wrap(bufferArray).order(ByteOrder.LITTLE_ENDIAN);
+        private final boolean is64Bit;
+        private final int structSize;
+        private final byte[] bufferArray;
+        private final ByteBuffer buffer;
 
         private static final short EV_SYN = 0x00;
         private static final short EV_KEY = 0x01;
@@ -378,6 +417,8 @@ public class Main {
 
         private static final short SYN_REPORT = 0x00;
         private static final short BTN_TOUCH = 0x14a;
+        private static final short ABS_X = 0x00;
+        private static final short ABS_Y = 0x01;
         private static final short ABS_MT_SLOT = 0x2f;
         private static final short ABS_MT_TRACKING_ID = 0x39;
         private static final short ABS_MT_POSITION_X = 0x35;
@@ -386,6 +427,10 @@ public class Main {
         private static final short ABS_MT_TOUCH_MAJOR = 0x30;
 
         public KernelTouchInjector(String deviceNode) throws Exception {
+            this.is64Bit = android.os.Process.is64Bit();
+            this.structSize = is64Bit ? 24 : 16;
+            this.bufferArray = new byte[structSize];
+            this.buffer = ByteBuffer.wrap(bufferArray).order(ByteOrder.LITTLE_ENDIAN);
             this.out = new FileOutputStream(deviceNode);
         }
 
@@ -395,8 +440,13 @@ public class Main {
             long sec = time / 1000;
             long usec = (time % 1000) * 1000;
 
-            buffer.putLong(sec);
-            buffer.putLong(usec);
+            if (is64Bit) {
+                buffer.putLong(sec);
+                buffer.putLong(usec);
+            } else {
+                buffer.putInt((int) sec);
+                buffer.putInt((int) usec);
+            }
             buffer.putShort(type);
             buffer.putShort(code);
             buffer.putInt(value);
@@ -412,6 +462,8 @@ public class Main {
             sendEvent(EV_ABS, ABS_MT_TRACKING_ID, (int)(Math.random() * 10000) + 1);
             sendEvent(EV_ABS, ABS_MT_POSITION_X, jitterX);
             sendEvent(EV_ABS, ABS_MT_POSITION_Y, jitterY);
+            sendEvent(EV_ABS, ABS_X, jitterX);
+            sendEvent(EV_ABS, ABS_Y, jitterY);
             sendEvent(EV_ABS, ABS_MT_PRESSURE, 50);
             sendEvent(EV_ABS, ABS_MT_TOUCH_MAJOR, 10);
             sendEvent(EV_KEY, BTN_TOUCH, 1);
@@ -421,6 +473,8 @@ public class Main {
 
             sendEvent(EV_ABS, ABS_MT_SLOT, 0);
             sendEvent(EV_ABS, ABS_MT_TRACKING_ID, -1);
+            sendEvent(EV_ABS, ABS_X, 0);
+            sendEvent(EV_ABS, ABS_Y, 0);
             sendEvent(EV_ABS, ABS_MT_PRESSURE, 0);
             sendEvent(EV_ABS, ABS_MT_TOUCH_MAJOR, 0);
             sendEvent(EV_KEY, BTN_TOUCH, 0);
@@ -437,6 +491,8 @@ public class Main {
             sendEvent(EV_ABS, ABS_MT_TRACKING_ID, (int)(Math.random() * 10000) + 1);
             sendEvent(EV_ABS, ABS_MT_POSITION_X, x1);
             sendEvent(EV_ABS, ABS_MT_POSITION_Y, y1);
+            sendEvent(EV_ABS, ABS_X, x1);
+            sendEvent(EV_ABS, ABS_Y, y1);
             sendEvent(EV_ABS, ABS_MT_PRESSURE, 50);
             sendEvent(EV_ABS, ABS_MT_TOUCH_MAJOR, 10);
             sendEvent(EV_KEY, BTN_TOUCH, 1);
@@ -450,6 +506,8 @@ public class Main {
 
                 sendEvent(EV_ABS, ABS_MT_POSITION_X, cx);
                 sendEvent(EV_ABS, ABS_MT_POSITION_Y, cy);
+                sendEvent(EV_ABS, ABS_X, cx);
+                sendEvent(EV_ABS, ABS_Y, cy);
                 sendEvent(EV_SYN, SYN_REPORT, 0);
                 out.flush();
             }
@@ -457,6 +515,8 @@ public class Main {
             Thread.sleep(stepTime);
             sendEvent(EV_ABS, ABS_MT_SLOT, 0);
             sendEvent(EV_ABS, ABS_MT_TRACKING_ID, -1);
+            sendEvent(EV_ABS, ABS_X, 0);
+            sendEvent(EV_ABS, ABS_Y, 0);
             sendEvent(EV_ABS, ABS_MT_PRESSURE, 0);
             sendEvent(EV_ABS, ABS_MT_TOUCH_MAJOR, 0);
             sendEvent(EV_KEY, BTN_TOUCH, 0);
@@ -469,6 +529,8 @@ public class Main {
             sendEvent(EV_ABS, ABS_MT_TRACKING_ID, (int)(Math.random() * 10000) + 1);
             sendEvent(EV_ABS, ABS_MT_POSITION_X, x);
             sendEvent(EV_ABS, ABS_MT_POSITION_Y, y);
+            sendEvent(EV_ABS, ABS_X, x);
+            sendEvent(EV_ABS, ABS_Y, y);
             sendEvent(EV_ABS, ABS_MT_PRESSURE, 50);
             sendEvent(EV_ABS, ABS_MT_TOUCH_MAJOR, 10);
             sendEvent(EV_KEY, BTN_TOUCH, 1);
@@ -479,9 +541,23 @@ public class Main {
 
             sendEvent(EV_ABS, ABS_MT_SLOT, 0);
             sendEvent(EV_ABS, ABS_MT_TRACKING_ID, -1);
+            sendEvent(EV_ABS, ABS_X, 0);
+            sendEvent(EV_ABS, ABS_Y, 0);
             sendEvent(EV_ABS, ABS_MT_PRESSURE, 0);
             sendEvent(EV_ABS, ABS_MT_TOUCH_MAJOR, 0);
             sendEvent(EV_KEY, BTN_TOUCH, 0);
+            sendEvent(EV_SYN, SYN_REPORT, 0);
+            out.flush();
+        }
+
+        public void injectKey(int keyCode) throws Exception {
+            sendEvent(EV_KEY, (short) keyCode, 1);
+            sendEvent(EV_SYN, SYN_REPORT, 0);
+            out.flush();
+
+            Thread.sleep(50);
+
+            sendEvent(EV_KEY, (short) keyCode, 0);
             sendEvent(EV_SYN, SYN_REPORT, 0);
             out.flush();
         }
