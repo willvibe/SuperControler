@@ -16,6 +16,44 @@ class SignalingClient(private val serverUrl: String) {
         private const val FALLBACK_IP = "74.48.6.172"
         private const val FALLBACK_PORT = "8765"
         private const val TAG = "Signaling"
+
+        private val sharedOkHttpClient: OkHttpClient by lazy {
+            val builder = OkHttpClient.Builder()
+                .pingInterval(45, TimeUnit.SECONDS)
+                .readTimeout(0, TimeUnit.MILLISECONDS)
+                .writeTimeout(15, TimeUnit.SECONDS)
+                .connectTimeout(20, TimeUnit.SECONDS)
+                .retryOnConnectionFailure(true)
+                .dns(object : Dns {
+                    override fun lookup(hostname: String): List<InetAddress> {
+                        try {
+                            val addresses = Dns.SYSTEM.lookup(hostname)
+                            val ipv4Only = addresses.filter { it is Inet4Address }
+                            return if (ipv4Only.isNotEmpty()) ipv4Only else addresses
+                        } catch (e: Exception) {
+                            Log.e(TAG, "DNS lookup failed for $hostname: ${e.message}")
+                            throw e
+                        }
+                    }
+                })
+
+            try {
+                val trustAllCerts = arrayOf<javax.net.ssl.TrustManager>(
+                    object : javax.net.ssl.X509TrustManager {
+                        override fun checkClientTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String) {}
+                        override fun checkServerTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String) {}
+                        override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = arrayOf()
+                    }
+                )
+                val sslContext = javax.net.ssl.SSLContext.getInstance("SSL")
+                sslContext.init(null, trustAllCerts, java.security.SecureRandom())
+                builder.sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as javax.net.ssl.X509TrustManager)
+                builder.hostnameVerifier { _, _ -> true }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to configure TLS: ${e.message}")
+            }
+            builder.build()
+        }
     }
 
     data class OnlineDevice(
@@ -51,51 +89,6 @@ class SignalingClient(private val serverUrl: String) {
 
     @Volatile
     private var lastPongTime = 0L
-
-    private val okHttpClient = createOkHttpClient()
-
-    private fun createOkHttpClient(): OkHttpClient {
-        val builder = OkHttpClient.Builder()
-            .pingInterval(45, TimeUnit.SECONDS)
-            .readTimeout(0, TimeUnit.MILLISECONDS)
-            .writeTimeout(15, TimeUnit.SECONDS)
-            .connectTimeout(20, TimeUnit.SECONDS)
-            .retryOnConnectionFailure(true)
-            .dns(object : Dns {
-                override fun lookup(hostname: String): List<InetAddress> {
-                    try {
-                        val addresses = Dns.SYSTEM.lookup(hostname)
-                        val ipv4Only = addresses.filter { it is Inet4Address }
-                        return if (ipv4Only.isNotEmpty()) {
-                            ipv4Only
-                        } else {
-                            addresses
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "DNS lookup failed for $hostname: ${e.message}")
-                        throw e
-                    }
-                }
-            })
-
-        try {
-            val trustAllCerts = arrayOf<javax.net.ssl.TrustManager>(
-                object : javax.net.ssl.X509TrustManager {
-                    override fun checkClientTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String) {}
-                    override fun checkServerTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String) {}
-                    override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = arrayOf()
-                }
-            )
-            val sslContext = javax.net.ssl.SSLContext.getInstance("SSL")
-            sslContext.init(null, trustAllCerts, java.security.SecureRandom())
-            builder.sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as javax.net.ssl.X509TrustManager)
-            builder.hostnameVerifier { _, _ -> true }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to configure TLS: ${e.message}")
-        }
-
-        return builder.build()
-    }
 
     sealed class State {
         object Idle : State()
@@ -246,7 +239,9 @@ class SignalingClient(private val serverUrl: String) {
                 if (isDestroyed || gen != wsGeneration) return
                 val msg = t.message ?: ""
                 val isLocalhostError = msg.contains("127.0.0.1") || msg.contains("localhost") || msg.contains("::1")
-                if (isLocalhostError && !useFallbackUrl && !serverUrl.contains(FALLBACK_IP)) {
+                if (useFallbackUrl) {
+                    useFallbackUrl = false
+                } else if (isLocalhostError && !serverUrl.contains(FALLBACK_IP)) {
                     useFallbackUrl = true
                 }
                 scope.launch {
@@ -261,7 +256,7 @@ class SignalingClient(private val serverUrl: String) {
             }
         }
 
-        okHttpClient.newWebSocket(request, listener)
+        sharedOkHttpClient.newWebSocket(request, listener)
     }
 
     private fun onWsOpen(ws: WebSocket) {

@@ -60,6 +60,8 @@ class MainActivity : AppCompatActivity() {
 
     private var currentMode = MODE_CONTROLLED
     private var isServiceRunning = false
+    private val logList = java.util.LinkedList<String>()
+    private val MAX_LOG_LINES = 200
     private val onlineDevices = mutableMapOf<String, SignalingClient.OnlineDevice>()
     private lateinit var devicesRefreshButton: Button
 
@@ -1082,8 +1084,13 @@ class MainActivity : AppCompatActivity() {
     private fun appendLog(message: String) {
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
             .format(java.util.Date())
+
         runOnUiThread {
-            logText.append("[$timestamp] $message\n")
+            logList.add("[$timestamp] $message")
+            if (logList.size > MAX_LOG_LINES) {
+                logList.removeFirst()
+            }
+            logText.text = logList.joinToString("\n") + "\n"
             logScrollView.post { logScrollView.fullScroll(View.FOCUS_DOWN) }
         }
     }
