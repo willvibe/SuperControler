@@ -21,6 +21,8 @@ public class Main {
     private static Method setDeviceIdMethod;
     private static KernelTouchInjector kernelInjector;
     private static boolean useKernelInjection = false;
+    private static int kernelFailCount = 0;
+    private static final int MAX_KERNEL_FAILS = 3;
 
     public static void main(String[] args) {
         if (args.length < 1) {
@@ -128,13 +130,26 @@ public class Main {
         }
     }
 
+    private static boolean shouldUseKernel() {
+        return useKernelInjection && kernelInjector != null && kernelFailCount < MAX_KERNEL_FAILS;
+    }
+
+    private static void onKernelFail(String op, Exception e) {
+        kernelFailCount++;
+        System.err.println("Kernel " + op + " failed (" + kernelFailCount + "/" + MAX_KERNEL_FAILS + "): " + e.getMessage());
+        if (kernelFailCount >= MAX_KERNEL_FAILS) {
+            useKernelInjection = false;
+            System.err.println("Kernel injection permanently disabled, using InputManager fallback");
+        }
+    }
+
     private static void injectTap(float x, float y) {
-        if (useKernelInjection) {
+        if (shouldUseKernel()) {
             try {
                 kernelInjector.injectTap((int) x, (int) y);
                 return;
             } catch (Exception e) {
-                System.err.println("Kernel tap failed, fallback: " + e.getMessage());
+                onKernelFail("tap", e);
             }
         }
 
@@ -160,12 +175,12 @@ public class Main {
     }
 
     private static void injectSwipe(float x1, float y1, float x2, float y2, int durationMs) {
-        if (useKernelInjection) {
+        if (shouldUseKernel()) {
             try {
                 kernelInjector.injectSwipe((int) x1, (int) y1, (int) x2, (int) y2, durationMs);
                 return;
             } catch (Exception e) {
-                System.err.println("Kernel swipe failed, fallback: " + e.getMessage());
+                onKernelFail("swipe", e);
             }
         }
 
@@ -205,12 +220,12 @@ public class Main {
     }
 
     private static void injectLongPress(float x, float y) {
-        if (useKernelInjection) {
+        if (shouldUseKernel()) {
             try {
                 kernelInjector.injectLongPress((int) x, (int) y);
                 return;
             } catch (Exception e) {
-                System.err.println("Kernel longpress failed, fallback: " + e.getMessage());
+                onKernelFail("longpress", e);
             }
         }
 
@@ -234,12 +249,12 @@ public class Main {
     }
 
     private static void injectScroll(float x, float y, float dx, float dy) {
-        if (useKernelInjection) {
+        if (shouldUseKernel()) {
             try {
                 kernelInjector.injectSwipe((int) x, (int) y, (int) (x + dx), (int) (y + dy), 200);
                 return;
             } catch (Exception e) {
-                System.err.println("Kernel scroll failed, fallback: " + e.getMessage());
+                onKernelFail("scroll", e);
             }
         }
 
@@ -325,9 +340,11 @@ public class Main {
     }
 
     static String findTouchScreenNode() {
+        Process process = null;
+        BufferedReader reader = null;
         try {
-            Process process = Runtime.getRuntime().exec("getevent -pl");
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            process = Runtime.getRuntime().exec("getevent -pl");
+            reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             String line;
             String currentNode = null;
 
@@ -338,21 +355,22 @@ public class Main {
                         currentNode = line.substring(idx).trim();
                     }
                 } else if (line.contains("ABS_MT_POSITION_X") && currentNode != null) {
-                    reader.close();
-                    process.destroy();
                     return currentNode;
                 }
             }
-            reader.close();
-            process.destroy();
         } catch (Exception e) {
             e.printStackTrace();
+        } finally {
+            if (reader != null) { try { reader.close(); } catch (Exception ignored) {} }
+            if (process != null) { process.destroy(); try { process.waitFor(); } catch (Exception ignored) {} }
         }
         return "/dev/input/event2";
     }
 
     static class KernelTouchInjector {
-        private FileOutputStream out;
+        private final FileOutputStream out;
+        private final byte[] bufferArray = new byte[24];
+        private final ByteBuffer buffer = ByteBuffer.wrap(bufferArray).order(ByteOrder.LITTLE_ENDIAN);
 
         private static final short EV_SYN = 0x00;
         private static final short EV_KEY = 0x01;
@@ -364,15 +382,15 @@ public class Main {
         private static final short ABS_MT_TRACKING_ID = 0x39;
         private static final short ABS_MT_POSITION_X = 0x35;
         private static final short ABS_MT_POSITION_Y = 0x36;
+        private static final short ABS_MT_PRESSURE = 0x3a;
+        private static final short ABS_MT_TOUCH_MAJOR = 0x30;
 
         public KernelTouchInjector(String deviceNode) throws Exception {
             this.out = new FileOutputStream(deviceNode);
         }
 
-        private void sendEvent(short type, short code, int value) throws Exception {
-            ByteBuffer buffer = ByteBuffer.allocate(24);
-            buffer.order(ByteOrder.LITTLE_ENDIAN);
-
+        private synchronized void sendEvent(short type, short code, int value) throws Exception {
+            buffer.clear();
             long time = System.currentTimeMillis();
             long sec = time / 1000;
             long usec = (time % 1000) * 1000;
@@ -383,7 +401,7 @@ public class Main {
             buffer.putShort(code);
             buffer.putInt(value);
 
-            out.write(buffer.array());
+            out.write(bufferArray);
         }
 
         public void injectTap(int x, int y) throws Exception {
@@ -394,6 +412,8 @@ public class Main {
             sendEvent(EV_ABS, ABS_MT_TRACKING_ID, (int)(Math.random() * 10000) + 1);
             sendEvent(EV_ABS, ABS_MT_POSITION_X, jitterX);
             sendEvent(EV_ABS, ABS_MT_POSITION_Y, jitterY);
+            sendEvent(EV_ABS, ABS_MT_PRESSURE, 50);
+            sendEvent(EV_ABS, ABS_MT_TOUCH_MAJOR, 10);
             sendEvent(EV_KEY, BTN_TOUCH, 1);
             sendEvent(EV_SYN, SYN_REPORT, 0);
 
@@ -401,6 +421,8 @@ public class Main {
 
             sendEvent(EV_ABS, ABS_MT_SLOT, 0);
             sendEvent(EV_ABS, ABS_MT_TRACKING_ID, -1);
+            sendEvent(EV_ABS, ABS_MT_PRESSURE, 0);
+            sendEvent(EV_ABS, ABS_MT_TOUCH_MAJOR, 0);
             sendEvent(EV_KEY, BTN_TOUCH, 0);
             sendEvent(EV_SYN, SYN_REPORT, 0);
 
@@ -415,6 +437,8 @@ public class Main {
             sendEvent(EV_ABS, ABS_MT_TRACKING_ID, (int)(Math.random() * 10000) + 1);
             sendEvent(EV_ABS, ABS_MT_POSITION_X, x1);
             sendEvent(EV_ABS, ABS_MT_POSITION_Y, y1);
+            sendEvent(EV_ABS, ABS_MT_PRESSURE, 50);
+            sendEvent(EV_ABS, ABS_MT_TOUCH_MAJOR, 10);
             sendEvent(EV_KEY, BTN_TOUCH, 1);
             sendEvent(EV_SYN, SYN_REPORT, 0);
             out.flush();
@@ -433,6 +457,8 @@ public class Main {
             Thread.sleep(stepTime);
             sendEvent(EV_ABS, ABS_MT_SLOT, 0);
             sendEvent(EV_ABS, ABS_MT_TRACKING_ID, -1);
+            sendEvent(EV_ABS, ABS_MT_PRESSURE, 0);
+            sendEvent(EV_ABS, ABS_MT_TOUCH_MAJOR, 0);
             sendEvent(EV_KEY, BTN_TOUCH, 0);
             sendEvent(EV_SYN, SYN_REPORT, 0);
             out.flush();
@@ -443,6 +469,8 @@ public class Main {
             sendEvent(EV_ABS, ABS_MT_TRACKING_ID, (int)(Math.random() * 10000) + 1);
             sendEvent(EV_ABS, ABS_MT_POSITION_X, x);
             sendEvent(EV_ABS, ABS_MT_POSITION_Y, y);
+            sendEvent(EV_ABS, ABS_MT_PRESSURE, 50);
+            sendEvent(EV_ABS, ABS_MT_TOUCH_MAJOR, 10);
             sendEvent(EV_KEY, BTN_TOUCH, 1);
             sendEvent(EV_SYN, SYN_REPORT, 0);
             out.flush();
@@ -451,6 +479,8 @@ public class Main {
 
             sendEvent(EV_ABS, ABS_MT_SLOT, 0);
             sendEvent(EV_ABS, ABS_MT_TRACKING_ID, -1);
+            sendEvent(EV_ABS, ABS_MT_PRESSURE, 0);
+            sendEvent(EV_ABS, ABS_MT_TOUCH_MAJOR, 0);
             sendEvent(EV_KEY, BTN_TOUCH, 0);
             sendEvent(EV_SYN, SYN_REPORT, 0);
             out.flush();
