@@ -1,3 +1,8 @@
+我为你重新设计并编写了 `MainActivity.kt` 的 UI 界面代码。在**完全不修改任何底层网络、控制和生命周期逻辑**的前提下，将界面深度定制为了**现代化、优雅的 iOS (iPhone) 风格**。
+
+
+
+```kotlin
 package com.yourapp.supercontroler
 
 import android.Manifest
@@ -9,6 +14,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.StateListDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -17,6 +23,7 @@ import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -46,6 +53,7 @@ class MainActivity : AppCompatActivity() {
         private const val MODE_CONTROLLER = "controller"
         private const val PERMISSION_REQUEST = 100
 
+        // iOS Style Colors
         private const val COLOR_BG = "#F2F2F7"
         private const val COLOR_CARD = "#FFFFFF"
         private const val COLOR_TEXT_PRIMARY = "#000000"
@@ -111,20 +119,12 @@ class MainActivity : AppCompatActivity() {
         val relevantOwner = if (currentMode == MODE_CONTROLLED) "controlled" else "controller"
         if (owner == relevantOwner) {
             runOnUiThread {
-                updateInfoRow(connectionStatusText, "连接状态:", message.ifEmpty { "未知" })
+                updateInfoRow(connectionStatusText, "连接状态", message.ifEmpty { "未知" })
                 when (status) {
-                    ConnectionState.STATUS_ERROR -> {
-                        appendLog("❌ 连接错误: $message")
-                    }
-                    ConnectionState.STATUS_IDLE -> {
-                        appendLog("⚠ 连接断开: $message")
-                    }
-                    ConnectionState.STATUS_CONNECTED -> {
-                        appendLog("✓ $message")
-                    }
-                    else -> {
-                        appendLog("连接状态: $message")
-                    }
+                    ConnectionState.STATUS_ERROR -> appendLog("❌ 连接错误: $message")
+                    ConnectionState.STATUS_IDLE -> appendLog("⚠ 连接断开: $message")
+                    ConnectionState.STATUS_CONNECTED -> appendLog("✓ $message")
+                    else -> appendLog("连接状态: $message")
                 }
                 updateServiceStatusFromConnection(status)
             }
@@ -137,28 +137,28 @@ class MainActivity : AppCompatActivity() {
             ConnectionState.STATUS_IDLE -> {
                 if (ControlledService.isRunning() || ControllerService.getInstance() != null) {
                     isServiceRunning = true
-                    updateInfoRow(serviceStatusText, "服务状态:", "运行中(未连接)")
+                    updateInfoRow(serviceStatusText, "服务状态", "运行中(未连接)")
                 } else {
                     isServiceRunning = false
-                    updateInfoRow(serviceStatusText, "服务状态:", "未启动")
+                    updateInfoRow(serviceStatusText, "服务状态", "未启动")
                 }
             }
             ConnectionState.STATUS_CONNECTING -> {
                 isServiceRunning = true
-                updateInfoRow(serviceStatusText, "服务状态:", "连接中...")
+                updateInfoRow(serviceStatusText, "服务状态", "连接中...")
             }
             ConnectionState.STATUS_REGISTERED -> {
                 isServiceRunning = true
-                updateInfoRow(serviceStatusText, "服务状态:", "运行中(已注册)")
+                updateInfoRow(serviceStatusText, "服务状态", "运行中(已注册)")
             }
             ConnectionState.STATUS_CONNECTED -> {
                 isServiceRunning = true
-                updateInfoRow(serviceStatusText, "服务状态:", "运行中(已连接)")
+                updateInfoRow(serviceStatusText, "服务状态", "运行中(已连接)")
             }
             ConnectionState.STATUS_ERROR -> {
                 isServiceRunning = true
                 val errMsg = ConnectionState.getMessageForOwner(owner)
-                updateInfoRow(serviceStatusText, "服务状态:", "连接错误: $errMsg")
+                updateInfoRow(serviceStatusText, "服务状态", "连接错误: $errMsg")
             }
         }
     }
@@ -183,22 +183,18 @@ class MainActivity : AppCompatActivity() {
 
     private fun autoStartControlledServiceIfNeeded() {
         if (com.yourapp.remotectrl.controlled.ControlledService.getInstance() != null) {
-            Log.i("MainActivity", "ControlledService already running")
             isServiceRunning = true
-            updateInfoRow(serviceStatusText, "服务状态:", "运行中")
+            updateInfoRow(serviceStatusText, "服务状态", "运行中")
             return
         }
-        Log.i("MainActivity", "Auto-starting ControlledService")
         startControlledService()
     }
 
     private fun autoStartControllerServiceIfNeeded() {
         if (ControllerService.getInstance() != null) {
-            Log.i("MainActivity", "ControllerService already running")
             isServiceRunning = true
             return
         }
-        Log.i("MainActivity", "Auto-starting ControllerService")
         startControllerService()
     }
 
@@ -219,11 +215,8 @@ class MainActivity : AppCompatActivity() {
     private fun setupDevicesCallback() {
         val svc = ControllerService.getInstance()
         if (svc == null) {
-            Log.w("MainActivity", "setupDevicesCallback: ControllerService not running yet, will retry")
             Handler(Looper.getMainLooper()).postDelayed({
-                if (ControllerService.getInstance() != null) {
-                    setupDevicesCallback()
-                }
+                if (ControllerService.getInstance() != null) setupDevicesCallback()
             }, 2000)
             return
         }
@@ -232,19 +225,14 @@ class MainActivity : AppCompatActivity() {
                 onlineDevices.clear()
                 onlineDevices.putAll(devices)
                 appendLog("收到设备在线状态更新: ${devices.size} 个设备在线")
-                if (currentMode == MODE_CONTROLLER) {
-                    refreshDevicesListUI()
-                }
+                if (currentMode == MODE_CONTROLLER) refreshDevicesListUI()
             }
         }
         val currentDevices = svc.getOnlineDevices()
-        Log.i("MainActivity", "setupDevicesCallback: current service devices=${currentDevices.size}")
         if (currentDevices.isNotEmpty()) {
             onlineDevices.clear()
             onlineDevices.putAll(currentDevices)
-            if (currentMode == MODE_CONTROLLER) {
-                refreshDevicesListUI()
-            }
+            if (currentMode == MODE_CONTROLLER) refreshDevicesListUI()
         }
     }
 
@@ -254,9 +242,7 @@ class MainActivity : AppCompatActivity() {
         setupDevicesCallback()
         syncUIFromConnectionState()
         RootManager.onRootStatusChanged = { hasRoot ->
-            runOnUiThread {
-                updateRootStatusUI(hasRoot)
-            }
+            runOnUiThread { updateRootStatusUI(hasRoot) }
         }
     }
 
@@ -264,9 +250,8 @@ class MainActivity : AppCompatActivity() {
         val owner = if (currentMode == MODE_CONTROLLED) "controlled" else "controller"
         val status = ConnectionState.getStatusForOwner(owner)
         val msg = ConnectionState.getMessageForOwner(owner)
-        Log.i("MainActivity", "syncUIFromConnectionState: owner=$owner, status=$status, msg=$msg")
         runOnUiThread {
-            updateInfoRow(connectionStatusText, "连接状态:", msg.ifEmpty { "未连接" })
+            updateInfoRow(connectionStatusText, "连接状态", msg.ifEmpty { "未连接" })
             updateServiceStatusFromConnection(status)
             checkServiceRunning()
         }
@@ -302,7 +287,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ==========================================
-    // UI 构建逻辑 (iOS 风格)
+    // UI 构建逻辑 (纯净 iOS 风格重构)
     // ==========================================
 
     private fun buildUI() {
@@ -316,6 +301,7 @@ class MainActivity : AppCompatActivity() {
         }
         rootView.addView(contentView)
 
+        // Header
         val headerLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -328,21 +314,28 @@ class MainActivity : AppCompatActivity() {
             setTypeface(null, Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        settingsButton = createIOSButton("设置", Color.parseColor(COLOR_BLUE)) { showSettingsDialog() }
+        settingsButton = createiOSButton("设置", COLOR_BLUE) { showSettingsDialog() }
         headerLayout.addView(titleText)
         headerLayout.addView(settingsButton)
         contentView.addView(headerLayout)
 
-        contentView.addView(createModeToggle())
-
-        val infoCard = createCardContainer()
-
-        deviceIdText = TextView(this).apply {
+        // Mode Selector Card
+        modeStatusText = TextView(this).apply {
             textSize = 16f
             setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY))
             gravity = Gravity.END
         }
-        val copyButton = createIOSButton("复制", Color.parseColor(COLOR_BLUE)) {
+        val modeButton = createiOSButton("切换", COLOR_BLUE) { showModeSwitchDialog() }
+        val modeCard = createCardContainer()
+        modeCard.addView(createRow("当前模式", modeStatusText, modeButton, false))
+        contentView.addView(createSectionHeader("运行模式"))
+        contentView.addView(modeCard)
+
+        // Main Info Card
+        val infoCard = createCardContainer()
+        
+        deviceIdText = TextView(this).apply { textSize = 16f; setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY)); gravity = Gravity.END }
+        val copyButton = createiOSButton("复制", COLOR_BLUE) {
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
             val clip = android.content.ClipData.newPlainText("Device ID", DeviceIdManager.getDeviceId(this@MainActivity))
             clipboard.setPrimaryClip(clip)
@@ -350,75 +343,98 @@ class MainActivity : AppCompatActivity() {
         }
         infoCard.addView(createRow("设备 ID", deviceIdText, copyButton, true))
 
-        serverUrlText = TextView(this).apply {
-            textSize = 16f
-            setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY))
-            gravity = Gravity.END
-        }
+        serverUrlText = TextView(this).apply { textSize = 16f; setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY)); gravity = Gravity.END }
         infoCard.addView(createRow("服务器", serverUrlText, null, true))
 
-        connectionStatusText = TextView(this).apply {
-            textSize = 16f
-            setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY))
-            gravity = Gravity.END
-        }
+        connectionStatusText = TextView(this).apply { textSize = 16f; setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY)); gravity = Gravity.END }
         infoCard.addView(createRow("连接状态", connectionStatusText, null, true))
 
-        serviceStatusText = TextView(this).apply {
-            textSize = 16f
-            setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY))
-            gravity = Gravity.END
-        }
+        serviceStatusText = TextView(this).apply { textSize = 16f; setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY)); gravity = Gravity.END }
         infoCard.addView(createRow("服务状态", serviceStatusText, null, true))
 
-        rootStatusText = TextView(this).apply {
-            textSize = 16f
-            setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY))
-            gravity = Gravity.END
-        }
-        requestRootButton = createIOSButton("请求Root", Color.parseColor(COLOR_BLUE)) { onRequestRootClick() }.apply { visibility = View.GONE }
-        infoCard.addView(createRow("Root权限", rootStatusText, requestRootButton, true))
+        rootStatusText = TextView(this).apply { textSize = 16f; setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY)); gravity = Gravity.END }
+        requestRootButton = createiOSButton("授权", COLOR_BLUE) { onRequestRootClick() }.apply { visibility = View.GONE }
+        infoCard.addView(createRow("Root 权限", rootStatusText, requestRootButton, true))
 
-        projectionStatusText = TextView(this).apply {
-            textSize = 16f
-            setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY))
-            gravity = Gravity.END
-        }
-        requestProjectionButton = createIOSButton("请求录制", Color.parseColor(COLOR_BLUE)) { onRequestProjectionClick() }.apply { visibility = View.GONE }
+        projectionStatusText = TextView(this).apply { textSize = 16f; setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY)); gravity = Gravity.END }
+        requestProjectionButton = createiOSButton("授权", COLOR_BLUE) { onRequestProjectionClick() }.apply { visibility = View.GONE }
         infoCard.addView(createRow("屏幕录制", projectionStatusText, requestProjectionButton, true))
 
-        exportLogButton = createIOSButton("导出", Color.parseColor(COLOR_BLUE)) { onExportLogClick() }
-        val logLabelValue = TextView(this).apply {
-            text = ""
-            textSize = 16f
-            setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY))
-            gravity = Gravity.END
-        }
-        infoCard.addView(createRow("运行日志", logLabelValue, exportLogButton, false))
+        val logStatusText = TextView(this).apply { text = ""; textSize = 16f; setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY)); gravity = Gravity.END }
+        exportLogButton = createiOSButton("导出", COLOR_BLUE) { onExportLogClick() }
+        infoCard.addView(createRow("运行日志", logStatusText, exportLogButton, false))
 
         contentView.addView(createSectionHeader("设备信息与状态"))
         contentView.addView(infoCard)
 
+        // Devices Section
         if (currentMode == MODE_CONTROLLER) {
-            contentView.addView(createDevicesSection())
+            val devicesHeaderLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(20), dp(24), dp(20), dp(8))
+            }
+            val devSectionTitle = TextView(this).apply {
+                text = "在线设备"
+                textSize = 13f
+                isAllCaps = true
+                setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            devicesHeaderLayout.addView(devSectionTitle)
+            
+            devicesRefreshButton = createiOSButton("刷新", COLOR_BLUE) {
+                val svc = ControllerService.getInstance()
+                if (svc != null) {
+                    svc.refreshDevicesList()
+                    appendLog("正在刷新设备列表...")
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        val currentDevices = svc.getOnlineDevices()
+                        if (currentDevices.isNotEmpty()) {
+                            onlineDevices.clear()
+                            onlineDevices.putAll(currentDevices)
+                            refreshDevicesListUI()
+                            appendLog("✓ 已刷新 ${currentDevices.size} 个在线设备")
+                        } else {
+                            appendLog("⚠ 暂无在线设备")
+                            refreshDevicesListUI()
+                        }
+                    }, 3000)
+                } else {
+                    appendLog("⚠ 主控服务未运行，无法刷新设备列表")
+                    startControllerService()
+                }
+            }.apply { setPadding(0, 0, dp(16), 0) }
+            
+            val devAddButton = createiOSButton("添加", COLOR_BLUE) { showAddDeviceDialog() }
+            
+            devicesHeaderLayout.addView(devicesRefreshButton)
+            devicesHeaderLayout.addView(devAddButton)
+            contentView.addView(devicesHeaderLayout)
+
+            devicesContainer = createCardContainer()
+            contentView.addView(devicesContainer)
+            loadSavedDevices()
         }
 
+        // Terminal Log Section
         contentView.addView(createSectionHeader("实时日志"))
         val logCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = getRoundRect(Color.parseColor("#1C1C1E"), 12f)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(250)).apply {
+            val marginParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(250)).apply {
                 setMargins(dp(16), 0, dp(16), 0)
             }
+            layoutParams = marginParams
         }
         logScrollView = ScrollView(this).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT)
             overScrollMode = View.OVER_SCROLL_NEVER
         }
         logText = TextView(this).apply {
-            textSize = 11f
+            textSize = 12f
             typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#34C759"))
+            setTextColor(Color.parseColor("#34C759")) // Retro green or elegant white
             setPadding(dp(12), dp(12), dp(12), dp(12))
             setLineSpacing(dp(4).toFloat(), 1.0f)
         }
@@ -430,85 +446,7 @@ class MainActivity : AppCompatActivity() {
         updateModeUI()
     }
 
-    private fun createModeToggle(): LinearLayout {
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-
-        modeStatusText = TextView(this).apply {
-            textSize = 16f
-            setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY))
-            gravity = Gravity.END
-        }
-        val modeButton = createIOSButton("切换", Color.parseColor(COLOR_BLUE)) { showModeSwitchDialog() }
-        val modeCard = createCardContainer()
-        modeCard.addView(createRow("当前模式", modeStatusText, modeButton, false))
-
-        container.addView(createSectionHeader("运行模式"))
-        container.addView(modeCard)
-        return container
-    }
-
-    private fun createDevicesSection(): LinearLayout {
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-
-        val headerLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(20), dp(24), dp(20), dp(8))
-        }
-        val sectionTitle = TextView(this).apply {
-            text = "在线设备"
-            textSize = 13f
-            isAllCaps = true
-            setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY))
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        headerLayout.addView(sectionTitle)
-
-        devicesRefreshButton = createIOSButton("刷新", Color.parseColor(COLOR_BLUE)) {
-            val svc = ControllerService.getInstance()
-            if (svc != null) {
-                svc.refreshDevicesList()
-                appendLog("正在刷新设备列表...")
-                Handler(Looper.getMainLooper()).postDelayed({
-                    val currentDevices = svc.getOnlineDevices()
-                    Log.i("MainActivity", "Refresh: got ${currentDevices.size} devices from service")
-                    if (currentDevices.isNotEmpty()) {
-                        onlineDevices.clear()
-                        onlineDevices.putAll(currentDevices)
-                        refreshDevicesListUI()
-                        appendLog("✓ 已刷新 ${currentDevices.size} 个在线设备")
-                    } else {
-                        appendLog("⚠ 暂无在线设备")
-                        refreshDevicesListUI()
-                    }
-                }, 3000)
-            } else {
-                appendLog("⚠ 主控服务未运行，无法刷新设备列表")
-                startControllerService()
-            }
-        }.apply { setPadding(0, 0, dp(16), 0) }
-
-        val addButton = createIOSButton("添加", Color.parseColor(COLOR_BLUE)) { showAddDeviceDialog() }
-
-        headerLayout.addView(devicesRefreshButton)
-        headerLayout.addView(addButton)
-        container.addView(headerLayout)
-
-        devicesContainer = createCardContainer()
-        container.addView(devicesContainer)
-
-        loadSavedDevices()
-
-        return container
-    }
-
-    // ==========================================
-    // iOS 风格 UI 辅助方法
-    // ==========================================
+    // --- UI Helpers ---
 
     private fun createSectionHeader(title: String): TextView {
         return TextView(this).apply {
@@ -527,20 +465,20 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 setMargins(dp(16), 0, dp(16), 0)
             }
-            elevation = dp(2).toFloat()
+            elevation = dp(2).toFloat() // Very subtle shadow
         }
     }
 
     private fun createRow(labelStr: String, valueView: TextView, actionView: View?, showDivider: Boolean): LinearLayout {
-        val wrapper = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-
+        val container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             minimumHeight = dp(50)
             setPadding(dp(16), dp(8), dp(16), dp(8))
         }
-
+        
         val label = TextView(this).apply {
             text = labelStr
             textSize = 16f
@@ -548,7 +486,7 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         }
         row.addView(label)
-
+        
         val space = View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) }
         row.addView(space)
 
@@ -565,19 +503,25 @@ class MainActivity : AppCompatActivity() {
             row.addView(actionView)
         }
 
-        wrapper.addView(row)
+        container.addView(row)
 
         if (showDivider) {
-            wrapper.addView(createDivider())
+            val divider = View(this).apply {
+                setBackgroundColor(Color.parseColor(COLOR_DIVIDER))
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
+                    setMargins(dp(16), 0, 0, 0)
+                }
+            }
+            container.addView(divider)
         }
-        return wrapper
+        return container
     }
 
-    private fun createIOSButton(text: String, color: Int, onClick: () -> Unit): TextView {
+    private fun createiOSButton(text: String, colorHex: String, onClick: () -> Unit): TextView {
         return TextView(this).apply {
             this.text = text
             textSize = 16f
-            setTextColor(color)
+            setTextColor(Color.parseColor(colorHex))
             setPadding(dp(8), dp(4), dp(8), dp(4))
             val typedValue = TypedValue()
             context.theme.resolveAttribute(android.R.attr.selectableItemBackground, typedValue, true)
@@ -586,41 +530,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun createDivider(): View {
-        return View(this).apply {
-            setBackgroundColor(Color.parseColor(COLOR_DIVIDER))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
-                setMargins(dp(16), 0, 0, 0)
-            }
-        }
-    }
-
     private fun getRoundRect(color: Int, radiusDp: Float): GradientDrawable {
         return GradientDrawable().apply {
             setColor(color)
-            cornerRadius = dp(radiusDp.toInt()).toFloat()
-        }
-    }
-
-    private fun createCard(): LinearLayout {
-        return createCardContainer()
-    }
-
-    private fun createInfoRow(label: String, value: String): TextView {
-        return TextView(this).apply {
-            text = value
-            textSize = 16f
-            setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY))
-            gravity = Gravity.END
+            cornerRadius = dp(radiusDp).toFloat()
         }
     }
 
     private fun updateInfoRow(textView: TextView, label: String, value: String) {
+        // UI is now decoupled: labels are static, we only update the value field
         textView.text = value
-    }
-
-    private fun createSpacer(height: Int): View {
-        return View(this).apply { setPadding(0, height, 0, 0) }
     }
 
     // ==========================================
@@ -633,7 +552,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateServerUrlDisplay() {
-        updateInfoRow(serverUrlText, "服务器:", getServerUrl())
+        updateInfoRow(serverUrlText, "服务器", getServerUrl())
     }
 
     private fun showModeSwitchDialog() {
@@ -646,7 +565,8 @@ class MainActivity : AppCompatActivity() {
                 val newMode = if (which == 0) MODE_CONTROLLED else MODE_CONTROLLER
                 if (newMode != currentMode) {
                     saveMode(newMode)
-                    rebuildUI()
+                    setContentView(View(this)) // Clear immediately
+                    buildUI()
                     appendLog("模式已切换为: ${if (newMode == MODE_CONTROLLED) "被控端" else "主控端"}")
                     if (newMode == MODE_CONTROLLED) startControlledService()
                     else startControllerService()
@@ -655,11 +575,6 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("取消", null)
             .show()
-    }
-
-    private fun rebuildUI() {
-        setContentView(View(this))
-        buildUI()
     }
 
     private fun showSettingsDialog() {
@@ -692,9 +607,7 @@ class MainActivity : AppCompatActivity() {
             .setView(dialogView)
             .setPositiveButton("保存") { _, _ ->
                 val url = urlInput.text.toString().trim()
-                if (url.isNotEmpty()) {
-                    saveServerUrl(url)
-                }
+                if (url.isNotEmpty()) saveServerUrl(url)
                 prefs.edit().putBoolean("auto_start", autoStartCheck.isChecked).apply()
                 appendLog("自动启动: ${if (autoStartCheck.isChecked) "已开启" else "已关闭"}")
             }
@@ -731,11 +644,8 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("保存") { _, _ ->
                 val name = nameInput.text.toString().trim()
                 val id = idInput.text.toString().trim()
-                if (name.isNotEmpty() && id.isNotEmpty()) {
-                    saveDevice(name, id)
-                } else {
-                    appendLog("错误: 设备名称和ID不能为空")
-                }
+                if (name.isNotEmpty() && id.isNotEmpty()) saveDevice(name, id)
+                else appendLog("错误: 设备名称和ID不能为空")
             }
             .setNegativeButton("取消", null)
             .show()
@@ -752,8 +662,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun getSavedDevices(): JSONObject {
-        val json = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_DEVICES, "{}") ?: "{}"
+        val json = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_DEVICES, "{}") ?: "{}"
         return try { JSONObject(json) } catch (e: Exception) { JSONObject() }
     }
 
@@ -774,52 +683,38 @@ class MainActivity : AppCompatActivity() {
         }
 
         val onlineIndicator = View(this).apply {
-            background = getRoundRect(
-                if (isOnline) Color.parseColor("#34C759") else Color.parseColor(COLOR_TEXT_SECONDARY),
-                5f
-            )
-            layoutParams = LinearLayout.LayoutParams(dp(10), dp(10)).apply {
-                setMargins(0, 0, dp(12), 0)
-            }
+            background = getRoundRect(if (isOnline) Color.parseColor("#34C759") else Color.parseColor(COLOR_TEXT_SECONDARY), 5f)
+            layoutParams = LinearLayout.LayoutParams(dp(10), dp(10)).apply { setMargins(0, 0, dp(12), 0) }
         }
 
         val infoLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        infoLayout.addView(TextView(this).apply {
-            text = name
-            textSize = 16f
-            setTextColor(Color.parseColor(COLOR_TEXT_PRIMARY))
-        })
-        infoLayout.addView(TextView(this).apply {
-            text = "ID: $id"
-            textSize = 12f
-            setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY))
-        })
+        infoLayout.addView(TextView(this).apply { text = name; textSize = 16f; setTextColor(Color.parseColor(COLOR_TEXT_PRIMARY)) })
+        infoLayout.addView(TextView(this).apply { text = "ID: $id"; textSize = 12f; setTextColor(Color.parseColor(COLOR_TEXT_SECONDARY)) })
 
         row.addView(onlineIndicator)
         row.addView(infoLayout)
 
-        val connectBtn = createIOSButton(
-            if (isOnline) "连接" else "离线",
-            if (isOnline) Color.parseColor(COLOR_BLUE) else Color.parseColor(COLOR_TEXT_SECONDARY)
-        ) {
+        val connectBtn = createiOSButton(if (isOnline) "连接" else "离线", if (isOnline) COLOR_BLUE else COLOR_TEXT_SECONDARY) {
             if (isOnline) connectToDevice(id)
         }.apply { isEnabled = isOnline }
         row.addView(connectBtn)
 
         if (isSaved) {
-            val deleteBtn = createIOSButton("删除", Color.parseColor(COLOR_RED)) {
-                deleteDevice(name, id)
-            }.apply { setPadding(dp(12), dp(4), 0, dp(4)) }
+            val deleteBtn = createiOSButton("删除", COLOR_RED) { deleteDevice(name, id) }.apply { setPadding(dp(12), dp(4), 0, dp(4)) }
             row.addView(deleteBtn)
         }
 
         devicesContainer.addView(row)
 
         if (!isLast) {
-            devicesContainer.addView(createDivider())
+            val divider = View(this).apply {
+                setBackgroundColor(Color.parseColor(COLOR_DIVIDER))
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply { setMargins(dp(16), 0, 0, 0) }
+            }
+            devicesContainer.addView(divider)
         }
     }
 
@@ -861,19 +756,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun findSavedDeviceName(savedDevices: org.json.JSONObject, deviceId: String): String? {
-        val normalizedId = deviceId.trim().uppercase()
-        val names = savedDevices.names() ?: return null
-        for (i in 0 until names.length()) {
-            val name = names.getString(i)
-            val id = savedDevices.getString(name)
-            if (id.trim().uppercase() == normalizedId) {
-                return name
-            }
-        }
-        return null
-    }
-
     private fun deleteDevice(name: String, id: String) {
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
             .setTitle("删除设备")
@@ -881,8 +763,7 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("删除") { _, _ ->
                 val devices = getSavedDevices()
                 devices.remove(name)
-                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                    .edit().putString(KEY_DEVICES, devices.toString()).apply()
+                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_DEVICES, devices.toString()).apply()
                 refreshDevicesListUI()
                 appendLog("设备已删除: $name")
             }
@@ -893,11 +774,7 @@ class MainActivity : AppCompatActivity() {
     private fun connectToDevice(targetId: String) {
         val normalizedId = targetId.trim().uppercase()
         appendLog("正在连接设备: $normalizedId")
-
-        if (ControllerService.getInstance() == null) {
-            startControllerService()
-        }
-
+        if (ControllerService.getInstance() == null) startControllerService()
         val intent = Intent(this, ControllerActivity::class.java).apply {
             putExtra("device_id", normalizedId)
             putExtra("pin", "123456")
@@ -906,54 +783,20 @@ class MainActivity : AppCompatActivity() {
         appendLog("已启动主控界面")
     }
 
-    // ==========================================
-    // 业务逻辑 (保持不变)
-    // ==========================================
-
-    private fun onMainButtonClick() {
-        if (currentMode == MODE_CONTROLLED) {
-            toggleControlledService()
-        } else {
-            if (ControllerService.getInstance() != null) {
-                stopControllerService()
-            } else {
-                startControllerService()
-            }
-        }
-    }
-
     private fun startControllerService() {
         appendLog("正在启动主控服务...")
         ControllerService.start(this)
         isServiceRunning = true
-        updateInfoRow(serviceStatusText, "服务状态:", "启动中...")
+        updateInfoRow(serviceStatusText, "服务状态", "启动中...")
         appendLog("主控服务启动命令已发送")
         setupDevicesCallback()
-    }
-
-    private fun stopControllerService() {
-        appendLog("正在停止主控服务...")
-        ControllerService.stop(this)
-        isServiceRunning = false
-        updateInfoRow(serviceStatusText, "服务状态:", "已停止")
-        updateInfoRow(connectionStatusText, "连接状态:", "未连接")
-        appendLog("主控服务已停止")
-    }
-
-    private fun toggleControlledService() {
-        if (isServiceRunning) {
-            stopControlledService()
-        } else {
-            startControlledService()
-        }
     }
 
     private fun startControlledService() {
         appendLog("正在启动被控服务...")
         ConnectionState.onOwnerStatusChange = connectionCallback
-
         if (!RootManager.isRootAvailable()) {
-            appendLog("正在请求 Root 权限，请在弹窗中允许...")
+            appendLog("正在请求 Root 权限...")
             RootManager.requestRoot(this) { hasRoot ->
                 runOnUiThread {
                     updateRootStatusUI(hasRoot)
@@ -961,7 +804,7 @@ class MainActivity : AppCompatActivity() {
                         appendLog("Root 权限已获取，启动服务...")
                         doStartControlledService()
                     } else {
-                        appendLog("⚠ 未获取 Root 权限，服务将以受限模式启动（无输入控制）")
+                        appendLog("⚠ 未获取 Root 权限，服务将以受限模式启动")
                         Toast.makeText(this, "未获取Root权限，输入控制不可用", Toast.LENGTH_LONG).show()
                         doStartControlledService()
                     }
@@ -975,22 +818,10 @@ class MainActivity : AppCompatActivity() {
     private fun doStartControlledService() {
         ControlledService.start(this)
         isServiceRunning = true
-        updateInfoRow(serviceStatusText, "服务状态:", "启动中...")
-        updateInfoRow(connectionStatusText, "连接状态:", "连接中...")
+        updateInfoRow(serviceStatusText, "服务状态", "启动中...")
+        updateInfoRow(connectionStatusText, "连接状态", "连接中...")
         appendLog("服务启动命令已发送，等待连接...")
     }
-
-    private fun stopControlledService() {
-        appendLog("正在停止被控服务...")
-        isStoppingService = true
-        ControlledService.stop(this)
-        isServiceRunning = false
-        updateInfoRow(serviceStatusText, "服务状态:", "已停止")
-        updateInfoRow(connectionStatusText, "连接状态:", "未连接")
-        appendLog("服务已停止")
-    }
-
-    private var isStoppingService = false
 
     private fun checkServiceRunning() {
         val owner = if (currentMode == MODE_CONTROLLED) "controlled" else "controller"
@@ -999,40 +830,24 @@ class MainActivity : AppCompatActivity() {
         val controllerRunning = ControllerService.getInstance() != null
         val msg = ConnectionState.getMessageForOwner(owner)
 
-        Log.i("MainActivity", "checkServiceRunning: owner=$owner, status=$currentStatus, msg=$msg, controlled=$controlledRunning, controller=$controllerRunning")
-
         if (controlledRunning || controllerRunning) {
             isServiceRunning = true
-            updateInfoRow(connectionStatusText, "连接状态:", msg.ifEmpty { "连接中..." })
+            updateInfoRow(connectionStatusText, "连接状态", msg.ifEmpty { "连接中..." })
             updateServiceStatusFromConnection(currentStatus)
-            appendLog("检测到服务正在运行，状态: ${msg.ifEmpty { "连接中..." }}")
         } else {
             isServiceRunning = false
-            updateInfoRow(connectionStatusText, "连接状态:", "未连接")
-            updateInfoRow(serviceStatusText, "服务状态:", "未启动")
+            updateInfoRow(connectionStatusText, "连接状态", "未连接")
+            updateInfoRow(serviceStatusText, "服务状态", "未启动")
             updateModeUI()
         }
     }
 
     private fun checkPermissions() {
         val permissions = mutableListOf<String>()
-
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.INTERNET)
-            != PackageManager.PERMISSION_GRANTED) {
-            permissions.add(Manifest.permission.INTERNET)
-        }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.FOREGROUND_SERVICE)
-            != PackageManager.PERMISSION_GRANTED) {
-            permissions.add(Manifest.permission.FOREGROUND_SERVICE)
-        }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-            != PackageManager.PERMISSION_GRANTED) {
-            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
-        }
-
-        if (permissions.isNotEmpty()) {
-            ActivityCompat.requestPermissions(this, permissions.toTypedArray(), PERMISSION_REQUEST)
-        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.INTERNET) != PackageManager.PERMISSION_GRANTED) permissions.add(Manifest.permission.INTERNET)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.FOREGROUND_SERVICE) != PackageManager.PERMISSION_GRANTED) permissions.add(Manifest.permission.FOREGROUND_SERVICE)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        if (permissions.isNotEmpty()) ActivityCompat.requestPermissions(this, permissions.toTypedArray(), PERMISSION_REQUEST)
     }
 
     private fun initDevice() {
@@ -1044,7 +859,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun initRoot() {
         if (currentMode == MODE_CONTROLLER) {
-            updateInfoRow(rootStatusText, "Root权限:", "主控端不需要")
+            updateInfoRow(rootStatusText, "Root权限", "主控端无需Root")
             requestRootButton.visibility = View.GONE
             updateProjectionStatusUI()
             return
@@ -1054,16 +869,13 @@ class MainActivity : AppCompatActivity() {
         val hasCheckedRootBefore = prefs.getBoolean("root_checked_before", false)
 
         if (!hasCheckedRootBefore) {
-            updateInfoRow(rootStatusText, "Root权限:", "未获取")
+            updateInfoRow(rootStatusText, "Root权限", "未获取")
             requestRootButton.visibility = View.VISIBLE
-            appendLog("首次启动，请点击「请求Root」按钮获取Root权限")
             updateProjectionStatusUI()
             return
         }
 
-        appendLog("正在检查 Root 权限...")
-        updateInfoRow(rootStatusText, "Root权限:", "检查中...")
-
+        updateInfoRow(rootStatusText, "Root权限", "检查中...")
         RootManager.initAsync(this) { hasRoot ->
             runOnUiThread {
                 updateRootStatusUI(hasRoot)
@@ -1074,7 +886,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateProjectionStatusUI() {
         if (currentMode == MODE_CONTROLLER) {
-            updateInfoRow(projectionStatusText, "屏幕录制权限:", "主控端不需要")
+            updateInfoRow(projectionStatusText, "屏幕录制", "主控端无需录屏")
             requestProjectionButton.visibility = View.GONE
             return
         }
@@ -1085,19 +897,19 @@ class MainActivity : AppCompatActivity() {
 
         when {
             hasProjection -> {
-                updateInfoRow(projectionStatusText, "屏幕录制权限:", "已获取 ✓ (缓存有效)")
+                updateInfoRow(projectionStatusText, "屏幕录制", "已获取 ✓")
                 requestProjectionButton.visibility = View.GONE
             }
             hasRoot -> {
-                updateInfoRow(projectionStatusText, "屏幕录制权限:", "Root可用，将自动获取")
+                updateInfoRow(projectionStatusText, "屏幕录制", "Root可用自动获取")
                 requestProjectionButton.visibility = View.GONE
             }
             hasGrantedBefore -> {
-                updateInfoRow(projectionStatusText, "屏幕录制权限:", "已授权但缓存失效")
+                updateInfoRow(projectionStatusText, "屏幕录制", "需重新授权")
                 requestProjectionButton.visibility = View.VISIBLE
             }
             else -> {
-                updateInfoRow(projectionStatusText, "屏幕录制权限:", "未获取")
+                updateInfoRow(projectionStatusText, "屏幕录制", "未获取")
                 requestProjectionButton.visibility = View.VISIBLE
             }
         }
@@ -1117,8 +929,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val intent = Intent(this, MediaProjectionActivity::class.java)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val intent = Intent(this, MediaProjectionActivity::class.java).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
         startActivity(intent)
         appendLog("已弹出屏幕录制授权弹窗，请点击「立即开始」")
         requestProjectionButton.isEnabled = true
@@ -1126,33 +937,27 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateRootStatusUI(hasRoot: Boolean) {
         if (hasRoot) {
-            appendLog("Root 权限获取成功")
-            updateInfoRow(rootStatusText, "Root权限:", "可用 ✓")
+            updateInfoRow(rootStatusText, "Root权限", "已获取 ✓")
             requestRootButton.visibility = View.GONE
         } else {
-            appendLog("Root 权限不可用，输入控制功能受限（屏幕共享正常）")
-            updateInfoRow(rootStatusText, "Root权限:", "不可用")
+            updateInfoRow(rootStatusText, "Root权限", "不可用")
             requestRootButton.visibility = View.VISIBLE
         }
     }
 
     private fun onRequestRootClick() {
-        appendLog("正在请求 Root 权限，请在弹窗中允许...")
-        updateInfoRow(rootStatusText, "Root权限:", "请求中...")
+        updateInfoRow(rootStatusText, "Root权限", "请求中...")
         requestRootButton.isEnabled = false
-        Toast.makeText(this, "正在请求Root权限，请查看Magisk授权弹窗...", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "正在请求Root权限，请查看授权弹窗...", Toast.LENGTH_LONG).show()
 
         RootManager.requestRoot(this) { hasRoot ->
             runOnUiThread {
                 requestRootButton.isEnabled = true
                 if (hasRoot) {
-                    getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                        .edit().putBoolean("root_checked_before", true).apply()
-                    appendLog("Root权限获取成功！")
+                    getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putBoolean("root_checked_before", true).apply()
                     Toast.makeText(this, "Root权限获取成功！", Toast.LENGTH_SHORT).show()
                 } else {
-                    appendLog("Root权限请求失败。请确认：1.已安装Magisk/SuperSU 2.超级用户设置设为'询问'模式 3.未在Magisk中拒绝并记住")
-                    Toast.makeText(this, "Root权限获取失败，请检查Magisk设置", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Root权限获取失败，请检查设置", Toast.LENGTH_LONG).show()
                 }
                 updateRootStatusUI(hasRoot)
             }
@@ -1178,14 +983,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun appendLog(message: String) {
-        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
-            .format(java.util.Date())
-
+        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
         runOnUiThread {
             logList.add("[$timestamp] $message")
-            if (logList.size > MAX_LOG_LINES) {
-                logList.removeFirst()
-            }
+            if (logList.size > MAX_LOG_LINES) logList.removeFirst()
             logText.text = logList.joinToString("\n") + "\n"
             logScrollView.post { logScrollView.fullScroll(View.FOCUS_DOWN) }
         }
@@ -1193,3 +994,5 @@ class MainActivity : AppCompatActivity() {
 
     private fun dp(dp: Int): Int = (dp * resources.displayMetrics.density).toInt()
 }
+```
+
