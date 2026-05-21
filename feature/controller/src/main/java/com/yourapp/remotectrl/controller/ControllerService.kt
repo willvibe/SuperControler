@@ -352,28 +352,41 @@ class ControllerService : Service() {
             webRtcClient?.onRemoteIceCandidate(sdpMid, sdpMLineIndex, candidate)
         }
 
-        signalingClient?.onDevicesOnline = { devices ->
-            Log.i(TAG, "onDevicesOnline: received ${devices.size} devices")
+        signalingClient?.onDevicesRefresh = { devices ->
+            Log.i(TAG, "onDevicesRefresh: received ${devices.size} devices")
+            onlineDevices.clear()
             for (device in devices) {
                 if (device.isOnline) {
                     onlineDevices[device.id] = device
-                } else {
-                    onlineDevices.remove(device.id)
                 }
             }
-            val devicesCopy = onlineDevices.toMap()
-            Handler(Looper.getMainLooper()).post {
-                try {
-                    onDevicesUpdate?.invoke(devicesCopy)
-                } catch (e: Exception) {
-                    Log.e(TAG, "onDevicesUpdate error: ${e.message}")
-                }
+            updateAndBroadcastDevices()
+        }
+
+        signalingClient?.onDeviceUpdate = { device ->
+            Log.i(TAG, "onDeviceUpdate: ${device.id} online=${device.isOnline}")
+            if (device.isOnline) {
+                onlineDevices[device.id] = device
+            } else {
+                onlineDevices.remove(device.id)
             }
+            updateAndBroadcastDevices()
+        }
+    }
+
+    private fun updateAndBroadcastDevices() {
+        val devicesCopy = onlineDevices.toMap()
+        Handler(Looper.getMainLooper()).post {
             try {
-                sendDevicesBroadcast(devicesCopy)
+                onDevicesUpdate?.invoke(devicesCopy)
             } catch (e: Exception) {
-                Log.e(TAG, "sendDevicesBroadcast error: ${e.message}")
+                Log.e(TAG, "onDevicesUpdate error: ${e.message}")
             }
+        }
+        try {
+            sendDevicesBroadcast(devicesCopy)
+        } catch (e: Exception) {
+            Log.e(TAG, "sendDevicesBroadcast error: ${e.message}")
         }
     }
 

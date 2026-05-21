@@ -26,7 +26,8 @@ class SignalingClient(private val serverUrl: String) {
     )
 
     var onConnectionStateChange: ((String, String) -> Unit)? = null
-    var onDevicesOnline: ((List<OnlineDevice>) -> Unit)? = null
+    var onDevicesRefresh: ((List<OnlineDevice>) -> Unit)? = null
+    var onDeviceUpdate: ((OnlineDevice) -> Unit)? = null
     var onSdpOffer: ((fromId: String, type: String, sdp: String) -> Unit)? = null
     var onSdpAnswer: ((fromId: String, type: String, sdp: String) -> Unit)? = null
     var onIceCandidate: ((fromId: String, sdpMid: String, sdpMLineIndex: Int, candidate: String) -> Unit)? = null
@@ -290,12 +291,10 @@ class SignalingClient(private val serverUrl: String) {
                     val ping = JSONObject().apply { put("type", "ping") }
                     val sent = ws.send(ping.toString())
                     if (!sent) {
-                        Log.w(TAG, "Heartbeat send failed")
-                        break
+                        Log.w(TAG, "Heartbeat send returned false, waiting for next cycle")
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "Heartbeat error: ${e.message}")
-                    break
                 }
             }
         }
@@ -383,9 +382,8 @@ class SignalingClient(private val serverUrl: String) {
                     ))
                 }
                 Log.i(TAG, "Received devices_list: ${devices.size} devices")
-                // 【修复9】切主线程更新设备列表
                 scope.launch(Dispatchers.Main) {
-                    onDevicesOnline?.invoke(devices)
+                    onDevicesRefresh?.invoke(devices)
                 }
             }
             "device_online", "device_offline" -> {
@@ -398,7 +396,7 @@ class SignalingClient(private val serverUrl: String) {
                 )
                 Log.i(TAG, "Device ${if (device.isOnline) "online" else "offline"}: ${device.id}")
                 scope.launch(Dispatchers.Main) {
-                    onDevicesOnline?.invoke(listOf(device))
+                    onDeviceUpdate?.invoke(device)
                 }
             }
             "pong" -> {
@@ -583,6 +581,7 @@ class SignalingClient(private val serverUrl: String) {
         if (currentWs != null) {
             try { currentWs.close(1000, "disconnect") } catch (_: Exception) {}
         }
+        scope.cancel()
     }
 
     fun resetForReconnect() {
