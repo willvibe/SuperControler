@@ -109,6 +109,8 @@ class SignalingClient(private val serverUrl: String) {
         peerId = ""
         isDestroyed = false
         reconnectAttempts = 0
+        reconnectJob?.cancel()
+        reconnectJob = null
         connectWebSocket()
     }
 
@@ -178,8 +180,6 @@ class SignalingClient(private val serverUrl: String) {
             return
         }
 
-        reconnectJob?.cancel()
-        reconnectJob = null
         heartbeatJob?.cancel()
         heartbeatJob = null
         healthCheckJob?.cancel()
@@ -604,6 +604,8 @@ class SignalingClient(private val serverUrl: String) {
         reconnectAttempts = 0
         useFallbackUrl = false
         wsGeneration++
+        reconnectJob?.cancel()
+        reconnectJob = null
         val currentWs = ws
         ws = null
         if (currentWs != null) {
