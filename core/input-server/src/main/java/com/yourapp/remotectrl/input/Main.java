@@ -202,6 +202,7 @@ public class Main {
 
         private static final short SYN_REPORT = 0x00;
         private static final short BTN_TOUCH = 0x14a;
+        private static final short BTN_TOOL_FINGER = 0x145;
         private static final short ABS_X = 0x00;
         private static final short ABS_Y = 0x01;
         private static final short ABS_MT_SLOT = 0x2f;
@@ -249,19 +250,35 @@ public class Main {
             sendEvent(EV_ABS, ABS_MT_POSITION_Y, jitterY);
             sendEvent(EV_ABS, ABS_X, jitterX);
             sendEvent(EV_ABS, ABS_Y, jitterY);
-            sendEvent(EV_ABS, ABS_MT_PRESSURE, 50);
-            sendEvent(EV_ABS, ABS_MT_TOUCH_MAJOR, 10);
+            sendEvent(EV_ABS, ABS_MT_PRESSURE, 30 + (int)(Math.random() * 10));
+            sendEvent(EV_ABS, ABS_MT_TOUCH_MAJOR, 5);
             sendEvent(EV_KEY, BTN_TOUCH, 1);
+            sendEvent(EV_KEY, BTN_TOOL_FINGER, 1);
             sendEvent(EV_SYN, SYN_REPORT, 0);
             out.flush();
 
-            Thread.sleep(45 + (int)(Math.random() * 20));
+            Thread.sleep(40 + (int)(Math.random() * 20));
+
+            int moveX = jitterX + (Math.random() > 0.5 ? 1 : -1) * (1 + (int)(Math.random() * 2));
+            int moveY = jitterY + (Math.random() > 0.5 ? 1 : -1) * (1 + (int)(Math.random() * 2));
+
+            sendEvent(EV_ABS, ABS_MT_POSITION_X, moveX);
+            sendEvent(EV_ABS, ABS_MT_POSITION_Y, moveY);
+            sendEvent(EV_ABS, ABS_X, moveX);
+            sendEvent(EV_ABS, ABS_Y, moveY);
+            sendEvent(EV_ABS, ABS_MT_PRESSURE, 60 + (int)(Math.random() * 30));
+            sendEvent(EV_ABS, ABS_MT_TOUCH_MAJOR, 12 + (int)(Math.random() * 5));
+            sendEvent(EV_SYN, SYN_REPORT, 0);
+            out.flush();
+
+            Thread.sleep(50 + (int)(Math.random() * 30));
 
             sendEvent(EV_ABS, ABS_MT_SLOT, 0);
             sendEvent(EV_ABS, ABS_MT_TRACKING_ID, -1);
             sendEvent(EV_ABS, ABS_MT_PRESSURE, 0);
             sendEvent(EV_ABS, ABS_MT_TOUCH_MAJOR, 0);
             sendEvent(EV_KEY, BTN_TOUCH, 0);
+            sendEvent(EV_KEY, BTN_TOOL_FINGER, 0);
             sendEvent(EV_SYN, SYN_REPORT, 0);
             out.flush();
         }

@@ -307,42 +307,45 @@ class MainActivity : AppCompatActivity() {
     // ==========================================
 
     private fun buildUI() {
-        val rootFrame = android.widget.FrameLayout(this).apply {
+        val rootLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor(COLOR_BG))
         }
 
+        val topBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.parseColor("#1C1C1E"))
+            setPadding(dp(20), dp(16), dp(12), dp(12))
+        }
+        val titleText = TextView(this).apply {
+            text = "SuperControler"
+            textSize = 20f
+            setTextColor(Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        settingsButton = TextView(this).apply {
+            text = "⚙"
+            textSize = 22f
+            setTextColor(Color.parseColor("#AAAAAA"))
+            setPadding(dp(12), dp(4), dp(12), dp(4))
+            setOnClickListener { showSettingsDialog() }
+        }
+        topBar.addView(titleText)
+        topBar.addView(settingsButton)
+        rootLayout.addView(topBar)
+
         val scrollView = ScrollView(this).apply {
             overScrollMode = View.OVER_SCROLL_NEVER
-            layoutParams = android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
-            )
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
         }
         val contentView = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(8), 0, dp(40))
         }
         scrollView.addView(contentView)
-        rootFrame.addView(scrollView)
-
-        settingsButton = TextView(this).apply {
-            text = "⚙"
-            textSize = 22f
-            setTextColor(Color.parseColor(COLOR_BLUE))
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            setOnClickListener { showSettingsDialog() }
-            layoutParams = android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
-                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                gravity = Gravity.TOP or Gravity.END
-                topMargin = dp(12)
-                rightMargin = dp(16)
-            }
-            setBackgroundColor(Color.parseColor("#FFFFFF"))
-            elevation = 4f
-        }
-        rootFrame.addView(settingsButton)
+        rootLayout.addView(scrollView)
 
         contentView.addView(createModeToggle())
 
@@ -437,7 +440,7 @@ class MainActivity : AppCompatActivity() {
         logCard.addView(logScrollView)
         contentView.addView(logCard)
 
-        setContentView(rootFrame)
+        setContentView(rootLayout)
         updateModeUI()
     }
 
