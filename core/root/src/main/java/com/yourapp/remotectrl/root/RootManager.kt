@@ -331,8 +331,7 @@ object RootManager {
             val packageName = context.packageName
             Shell.cmd(
                 "settings put secure miui_optimization_whitelist $packageName 1",
-                "dumpsys deviceidle whitelist +$packageName",
-                "dumpsys battery unplug"
+                "dumpsys deviceidle whitelist +$packageName"
             ).submit { result ->
                 Log.i("RootManager", "MIUI optimizations: ${result.isSuccess}")
             }
