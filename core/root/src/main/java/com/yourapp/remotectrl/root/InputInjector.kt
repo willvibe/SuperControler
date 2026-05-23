@@ -141,7 +141,7 @@ class InputInjector(private val context: Context) {
         if (isSocketReady) {
             sendRawCommand("T,$x,$y")
         } else {
-            Shell.cmd("input tap $x $y").submit()
+            Log.e(TAG, "Socket未就绪，已拦截 Tap 事件，拒绝使用框架层注入")
         }
     }
 
@@ -150,7 +150,7 @@ class InputInjector(private val context: Context) {
         if (isSocketReady) {
             sendRawCommand("S,$x1,$y1,$x2,$y2,$durationMs")
         } else {
-            Shell.cmd("input swipe $x1 $y1 $x2 $y2 $durationMs").submit()
+            Log.e(TAG, "Socket未就绪，已拦截 Swipe 事件")
         }
     }
 
@@ -159,7 +159,7 @@ class InputInjector(private val context: Context) {
         if (isSocketReady) {
             sendRawCommand("L,$x,$y")
         } else {
-            Shell.cmd("input swipe $x $y $x $y 600").submit()
+            Log.e(TAG, "Socket未就绪，已拦截 LongPress 事件")
         }
     }
 
@@ -168,7 +168,7 @@ class InputInjector(private val context: Context) {
         if (isSocketReady) {
             sendRawCommand("R,$x,$y,$dx,$dy")
         } else {
-            Shell.cmd("input swipe $x $y ${x + dx} ${y + dy} 200").submit()
+            Log.e(TAG, "Socket未就绪，已拦截 Scroll 事件")
         }
     }
 
@@ -177,7 +177,7 @@ class InputInjector(private val context: Context) {
         if (isSocketReady) {
             sendRawCommand("K,$keyCode")
         } else {
-            Shell.cmd("input keyevent $keyCode").submit()
+            Log.e(TAG, "Socket未就绪，已拦截 Key 事件")
         }
     }
 
@@ -187,34 +187,7 @@ class InputInjector(private val context: Context) {
     fun power() = key(KeyEvent.KEYCODE_POWER)
 
     fun inputText(text: String) {
-        if (!rootAvailable) {
-            Log.w(TAG, "inputText ignored - no root")
-            return
-        }
-        val safeText = text.replace(" ", "%s")
-        Shell.cmd("input text '$safeText'").submit { result ->
-            if (!result.isSuccess) {
-                Log.w(TAG, "input text failed: ${result.err}, falling back to clipboard")
-                inputTextFallback(text)
-            }
-        }
-    }
-
-    private fun inputTextFallback(text: String) {
-        try {
-            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-            val clip = android.content.ClipData.newPlainText("remote_input", text)
-            clipboard.setPrimaryClip(clip)
-            if (rootAvailable) {
-                Shell.cmd("input keyevent 279").submit { result ->
-                    if (!result.isSuccess) {
-                        Log.w(TAG, "inputTextFallback keyevent failed: ${result.err}")
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "inputText fallback failed: ${e.message}")
-        }
+        Log.e(TAG, "纯内核级注入模式下，禁止使用系统框架级的 input text 命令。请通过模拟点击屏幕软键盘输入文本。")
     }
 
     fun destroy() {
