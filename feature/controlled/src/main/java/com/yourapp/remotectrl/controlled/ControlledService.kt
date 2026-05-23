@@ -753,21 +753,28 @@ class ControlledService : Service() {
                     batchScroll(inj, absX, absY, absDx, absDy)
                 }
                 "KEY" -> {
-                    Log.i(TAG, "Injecting key event: $keyCode")
-                    inj.key(keyCode)
+                    Log.w(TAG, "接收到 KEY 事件: $keyCode，纯内核模式已屏蔽底层 Key 注入")
+                    if (keyCode == android.view.KeyEvent.KEYCODE_POWER) {
+                        com.topjohnwu.superuser.Shell.cmd("input keyevent 26").submit()
+                    }
                 }
-                "TEXT" -> inj.inputText(text)
+                "TEXT" -> {
+                    Log.w(TAG, "收到文本注入请求。为防检测，纯内核模式禁止直接输入。请在主控端点击软键盘打字。")
+                }
                 "BACK" -> {
-                    Log.i(TAG, "Injecting BACK key")
-                    inj.back()
+                    Log.i(TAG, "纯内核模式：将 BACK 翻译为左侧边缘侧滑")
+                    val startY = currentHeight / 2
+                    inj.swipe(0, startY, 300, startY, 200)
                 }
                 "HOME" -> {
-                    Log.i(TAG, "Injecting HOME key")
-                    inj.home()
+                    Log.i(TAG, "纯内核模式：将 HOME 翻译为底部上滑")
+                    val startX = currentWidth / 2
+                    inj.swipe(startX, currentHeight, startX, currentHeight - 500, 150)
                 }
                 "RECENTS" -> {
-                    Log.i(TAG, "Injecting RECENTS key")
-                    inj.recents()
+                    Log.i(TAG, "纯内核模式：将 RECENTS 翻译为底部上滑并停顿")
+                    val startX = currentWidth / 2
+                    inj.swipe(startX, currentHeight, startX, currentHeight - 500, 600)
                 }
                 else -> {
                     Log.w(TAG, "Unknown event type: $typeStr")
