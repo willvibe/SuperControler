@@ -445,6 +445,20 @@ class ControllerService : Service() {
                         } catch (e: Exception) {
                             Log.e(TAG, "activityWebRtcConnectedCallback error: ${e.message}")
                         }
+                        if (!connected) {
+                            Log.i(TAG, "WebRTC disconnected, cleaning up client")
+                            val oldClient = webRtcClient
+                            webRtcClient = null
+                            pendingTargetId = null
+                            isConnecting = false
+                            signalingClient?.resetPeerState()
+                            ConnectionState.update(ConnectionState.STATUS_REGISTERED, "已注册，等待控制", "controller")
+                            if (oldClient != null) {
+                                serviceScope.launch(Dispatchers.IO) {
+                                    try { oldClient.dispose() } catch (_: Exception) {}
+                                }
+                            }
+                        }
                     }
 
                     override fun onDataChannelMessage(message: String) {
@@ -519,13 +533,28 @@ class ControllerService : Service() {
 
     fun disconnectWebRtcAndReset() {
         Log.i(TAG, "disconnectWebRtcAndReset() called")
-        webRtcClient?.dispose()
+
+        val clientToDispose = webRtcClient
         webRtcClient = null
         pendingTargetId = null
         isConnecting = false
+
         signalingClient?.resetPeerState()
         ConnectionState.update(ConnectionState.STATUS_REGISTERED, "已注册，等待控制", "controller")
-        setActivityCallbacks(null, null, null)
+
+        if (clientToDispose != null) {
+            serviceScope.launch(Dispatchers.IO) {
+                try {
+                    clientToDispose.disconnectPeer()
+                    delay(100)
+                    clientToDispose.dispose()
+                    Log.i(TAG, "Old WebRtcClient safely disposed after sending DISCONNECT")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error disposing WebRtcClient: ${e.message}")
+                }
+            }
+        }
+
         Log.i(TAG, "WebRTC reset done, signaling connection kept alive")
     }
 
