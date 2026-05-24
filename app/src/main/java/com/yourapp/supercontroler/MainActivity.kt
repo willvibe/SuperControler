@@ -285,13 +285,12 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         currentMode = prefs.getString(KEY_MODE, MODE_CONTROLLED) ?: MODE_CONTROLLED
 
-        val turnUrl = prefs.getString("turn_url", "") ?: ""
-        val turnUser = prefs.getString("turn_user", "") ?: ""
-        val turnPass = prefs.getString("turn_pass", "") ?: ""
-        com.yourapp.remotectrl.webrtc.IceConfig.turnServers = if (turnUrl.isNotEmpty()) {
-            listOf(com.yourapp.remotectrl.webrtc.IceConfig.TurnServer(turnUrl, turnUser, turnPass))
-        } else {
-            emptyList()
+        val turnApi = prefs.getString("turn_api_url", "") ?: ""
+        com.yourapp.remotectrl.webrtc.IceConfig.turnApiUrl = turnApi
+        if (turnApi.isNotEmpty()) {
+            Thread {
+                com.yourapp.remotectrl.webrtc.IceConfig.fetchIceServersFromApi()
+            }.start()
         }
     }
 
@@ -710,9 +709,9 @@ class MainActivity : AppCompatActivity() {
         }
         dialogView.addView(autoStartCheck)
 
-        val turnUrlInput = EditText(this).apply {
-            hint = "TURN 服务器 URL (如: turn:1.2.3.4:3478)"
-            setText(prefs.getString("turn_url", ""))
+        val turnApiInput = EditText(this).apply {
+            hint = "TURN API 地址 (如: https://101.33.80.14:8765/turn)"
+            setText(prefs.getString("turn_api_url", ""))
             background = getRoundRect(Color.parseColor(COLOR_BG), 8f)
             setPadding(dp(12), dp(12), dp(12), dp(12))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
@@ -720,29 +719,7 @@ class MainActivity : AppCompatActivity() {
                 bottomMargin = dp(8)
             }
         }
-        dialogView.addView(turnUrlInput)
-
-        val turnUserInput = EditText(this).apply {
-            hint = "TURN 用户名"
-            setText(prefs.getString("turn_user", ""))
-            background = getRoundRect(Color.parseColor(COLOR_BG), 8f)
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = dp(8)
-            }
-        }
-        dialogView.addView(turnUserInput)
-
-        val turnPassInput = EditText(this).apply {
-            hint = "TURN 密码"
-            setText(prefs.getString("turn_pass", ""))
-            background = getRoundRect(Color.parseColor(COLOR_BG), 8f)
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = dp(8)
-            }
-        }
-        dialogView.addView(turnPassInput)
+        dialogView.addView(turnApiInput)
 
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
             .setTitle("服务器设置")
@@ -754,23 +731,23 @@ class MainActivity : AppCompatActivity() {
                 }
                 prefs.edit().putBoolean("auto_start", autoStartCheck.isChecked).apply()
 
-                val turnUrl = turnUrlInput.text.toString().trim()
-                val turnUser = turnUserInput.text.toString().trim()
-                val turnPass = turnPassInput.text.toString().trim()
-                prefs.edit()
-                    .putString("turn_url", turnUrl)
-                    .putString("turn_user", turnUser)
-                    .putString("turn_pass", turnPass)
-                    .apply()
+                val turnApi = turnApiInput.text.toString().trim()
+                prefs.edit().putString("turn_api_url", turnApi).apply()
+                com.yourapp.remotectrl.webrtc.IceConfig.turnApiUrl = turnApi
 
-                com.yourapp.remotectrl.webrtc.IceConfig.turnServers = if (turnUrl.isNotEmpty()) {
-                    listOf(com.yourapp.remotectrl.webrtc.IceConfig.TurnServer(turnUrl, turnUser, turnPass))
+                if (turnApi.isNotEmpty()) {
+                    Thread {
+                        val ok = com.yourapp.remotectrl.webrtc.IceConfig.fetchIceServersFromApi()
+                        runOnUiThread {
+                            appendLog("TURN API: ${if (ok) "已获取 ICE 服务器 (${com.yourapp.remotectrl.webrtc.IceConfig.turnServers.size} TURN)" else "获取失败，将使用 STUN 直连"}")
+                        }
+                    }.start()
                 } else {
-                    emptyList()
+                    com.yourapp.remotectrl.webrtc.IceConfig.turnServers = emptyList()
+                    appendLog("TURN API: 未配置，将使用 STUN 直连（仅局域网可用）")
                 }
 
                 appendLog("自动启动: ${if (autoStartCheck.isChecked) "已开启" else "已关闭"}")
-                appendLog("TURN 服务器: ${if (turnUrl.isNotEmpty()) turnUrl else "未配置"}")
             }
             .setNegativeButton("取消", null)
             .show()
