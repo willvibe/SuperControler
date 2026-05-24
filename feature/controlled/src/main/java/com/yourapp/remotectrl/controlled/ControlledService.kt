@@ -80,6 +80,17 @@ class ControlledService : Service() {
     @Volatile
     private var isConnecting = false
 
+    private fun markConnecting() {
+        isConnecting = true
+        serviceScope.launch {
+            delay(30_000)
+            if (isConnecting) {
+                Log.w(TAG, "isConnecting timeout after 30s, resetting...")
+                isConnecting = false
+            }
+        }
+    }
+
     @Volatile
     private var projectionRequestInProgress = false
 
@@ -575,7 +586,7 @@ class ControlledService : Service() {
                 webRtcClient = null
                 videoCaptureStarted = false
                 projectionRequestInProgress = false
-                isConnecting = true
+                markConnecting()
                 pendingIceCandidates.clear()
                 pendingSdpFromId = null
                 pendingSdpType = null
@@ -594,7 +605,7 @@ class ControlledService : Service() {
                 }
                 requestMediaProjection()
             } else if (MediaProjectionHelper.hasCachedPermission()) {
-                isConnecting = true
+                markConnecting()
                 val data = MediaProjectionHelper.getCachedProjectionData()
                 if (data != null) {
                     Log.i(TAG, "onPeerConnected: re-initializing WebRtcClient with cached MediaProjection")
@@ -614,7 +625,7 @@ class ControlledService : Service() {
 
         signalingClient.onSdpOffer = lambda@{ fromId, type, sdp ->
             Log.i(TAG, "onSdpOffer: fromId=$fromId, sdpLength=${sdp.length}")
-            isConnecting = true
+            markConnecting()
             if (webRtcClient == null) {
                 if (MediaProjectionHelper.hasCachedPermission()) {
                     val data = MediaProjectionHelper.getCachedProjectionData()

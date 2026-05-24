@@ -2,6 +2,7 @@ package com.yourapp.remotectrl.webrtc
 
 import org.webrtc.PeerConnection
 import org.json.JSONObject
+import android.util.Log
 import java.net.URL
 import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLContext
@@ -22,6 +23,7 @@ object IceConfig {
         "stun:stun1.l.google.com:19302"
     )
 
+    @Volatile
     var turnServers = listOf<TurnServer>()
 
     var turnApiUrl = "https://101.33.80.14:8765/turn"
@@ -111,8 +113,10 @@ object IceConfig {
                 stunServers = newStunServers
             }
             turnServers = newTurnServers
+            Log.i("IceConfig", "Fetched ${newTurnServers.size} TURN + ${newStunServers.size} STUN servers")
             return true
         } catch (e: Exception) {
+            Log.e("IceConfig", "fetchIceServersFromApi failed: ${e.message}")
             return false
         }
     }

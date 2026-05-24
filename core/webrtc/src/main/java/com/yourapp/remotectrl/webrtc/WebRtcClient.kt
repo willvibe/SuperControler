@@ -130,16 +130,7 @@ class WebRtcClient(
 
     fun initialize() {
         if (isDisposed) return
-        Log.i(TAG, "initialize()")
-
-        if (IceConfig.turnServers.isEmpty() && IceConfig.turnApiUrl.isNotEmpty()) {
-            try {
-                IceConfig.fetchIceServersFromApi()
-                Log.i(TAG, "ICE servers fetched: ${IceConfig.turnServers.size} TURN servers")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to fetch TURN servers: ${e.message}")
-            }
-        }
+        Log.i(TAG, "initialize() TURN servers: ${IceConfig.turnServers.size}")
 
         eglBase = getSharedEglBase(context)
 
