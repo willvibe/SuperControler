@@ -132,7 +132,15 @@ class WebRtcClient(
         if (isDisposed) return
         Log.i(TAG, "initialize()")
 
-        // 【修复4】严格保证顺序：先 init Native 库，再获取 EglBase
+        if (IceConfig.turnServers.isEmpty() && IceConfig.turnApiUrl.isNotEmpty()) {
+            try {
+                IceConfig.fetchIceServersFromApi()
+                Log.i(TAG, "ICE servers fetched: ${IceConfig.turnServers.size} TURN servers")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to fetch TURN servers: ${e.message}")
+            }
+        }
+
         eglBase = getSharedEglBase(context)
 
         val encoderFactory = DefaultVideoEncoderFactory(eglBase!!.eglBaseContext, true, true)
@@ -494,12 +502,18 @@ class WebRtcClient(
 
                     val track = localVideoTrack
                     if (track != null && !isInitiator) {
-                        for (transceiver in pc.transceivers) {
-                            if (transceiver.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO) {
-                                transceiver.sender.setTrack(track, true)
-                                transceiver.direction = RtpTransceiver.RtpTransceiverDirection.SEND_ONLY
-                                Log.i(TAG, "Successfully bound local screen track to remote offer transceiver!")
-                                break
+                        try {
+                            pc.addTrack(track, listOf("ARDAMS"))
+                            Log.i(TAG, "Successfully added local screen track to PeerConnection!")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "AddTrack error: ${e.message}")
+                            for (transceiver in pc.transceivers) {
+                                if (transceiver.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO) {
+                                    transceiver.sender.setTrack(track, true)
+                                    transceiver.direction = RtpTransceiver.RtpTransceiverDirection.SEND_ONLY
+                                    Log.i(TAG, "Fallback: bound local screen track to transceiver!")
+                                    break
+                                }
                             }
                         }
                     }

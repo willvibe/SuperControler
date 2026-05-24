@@ -56,7 +56,7 @@ class InputInjector(private val context: Context) {
             Thread.sleep(200)
 
             // 【修复8】使用 nohup 保证进程脱离会话独立运行
-            val cmd = "nohup app_process -Djava.class.path=$TARGET_PATH /system/bin com.yourapp.remotectrl.input.Main $sessionToken > /dev/null 2>&1 &"
+            val cmd = "(app_process -Djava.class.path=$TARGET_PATH /system/bin com.yourapp.remotectrl.input.Main $sessionToken > /dev/null 2>&1 &)"
             Shell.cmd(cmd).submit()
 
             Thread {

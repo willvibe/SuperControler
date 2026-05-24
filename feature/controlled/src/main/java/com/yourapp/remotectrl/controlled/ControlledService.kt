@@ -894,11 +894,11 @@ class ControlledService : Service() {
     private fun calcEncodeSize(w: Int, h: Int, maxLong: Int): Pair<Int, Int> {
         val ratio = maxLong.toFloat() / maxOf(w, h)
         if (ratio >= 1f) {
-            return Pair(w - w % 2, h - h % 2)
+            return Pair(w.floorTo16(), h.floorTo16())
         }
         val targetW = (w * ratio).toInt()
         val targetH = (h * ratio).toInt()
-        return Pair(targetW - targetW % 2, targetH - targetH % 2)
+        return Pair(targetW.floorTo16(), targetH.floorTo16())
     }
 
     private fun Int.floorTo16() = (this / 16) * 16
