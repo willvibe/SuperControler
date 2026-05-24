@@ -24,7 +24,7 @@ object IceConfig {
 
     var turnServers = listOf<TurnServer>()
 
-    var turnApiUrl = ""
+    var turnApiUrl = "https://101.33.80.14:8765/turn"
 
     fun buildIceServers(): List<PeerConnection.IceServer> {
         val servers = mutableListOf<PeerConnection.IceServer>()

@@ -285,7 +285,7 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         currentMode = prefs.getString(KEY_MODE, MODE_CONTROLLED) ?: MODE_CONTROLLED
 
-        val turnApi = prefs.getString("turn_api_url", "") ?: ""
+        val turnApi = prefs.getString("turn_api_url", "https://101.33.80.14:8765/turn") ?: "https://101.33.80.14:8765/turn"
         com.yourapp.remotectrl.webrtc.IceConfig.turnApiUrl = turnApi
         if (turnApi.isNotEmpty()) {
             Thread {
