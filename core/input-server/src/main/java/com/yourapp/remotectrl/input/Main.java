@@ -2,6 +2,11 @@ package com.yourapp.remotectrl.input;
 
 import android.net.LocalServerSocket;
 import android.net.LocalSocket;
+import android.os.SystemClock;
+import android.view.InputDevice;
+import android.view.InputEvent;
+import android.view.KeyCharacterMap;
+import android.view.KeyEvent;
 import java.io.BufferedReader;
 import java.io.FileOutputStream;
 import java.io.InputStreamReader;
@@ -11,6 +16,8 @@ import java.nio.ByteOrder;
 
 public class Main {
     private static KernelTouchInjector kernelInjector;
+    private static Method injectMethod;
+    private static Object inputManager;
 
     public static void main(String[] args) {
         if (args.length < 1) {
@@ -29,12 +36,14 @@ public class Main {
 
         String authToken = args[0];
 
+        initReflection();
+
         String touchNode = findTouchScreenNode();
         try {
             kernelInjector = new KernelTouchInjector(touchNode);
             System.out.println("Kernel Touch Injector initialized on: " + touchNode + " (64bit=" + kernelInjector.is64Bit + ")");
         } catch (Exception e) {
-            System.err.println("Kernel injection FAILED, no fallback available: " + e.getMessage());
+            System.err.println("Kernel injection FAILED: " + e.getMessage());
             kernelInjector = null;
         }
 
@@ -100,6 +109,27 @@ public class Main {
         } catch (Exception ignored) {}
     }
 
+    private static void initReflection() {
+        try {
+            Class<?> inputManagerClass = Class.forName("android.hardware.input.InputManager");
+            Method getInstanceMethod = inputManagerClass.getDeclaredMethod("getInstance");
+            inputManager = getInstanceMethod.invoke(null);
+            injectMethod = inputManagerClass.getMethod("injectInputEvent", InputEvent.class, int.class);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void injectEvent(InputEvent event) {
+        try {
+            if (injectMethod != null && inputManager != null) {
+                injectMethod.invoke(inputManager, event, 0);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     private static void injectTap(float x, float y) {
         if (kernelInjector == null) {
             System.err.println("injectTap: kernel injector not available");
@@ -149,15 +179,14 @@ public class Main {
     }
 
     private static void injectKey(int keyCode) {
-        if (kernelInjector == null) {
-            System.err.println("injectKey: kernel injector not available");
-            return;
-        }
-        try {
-            kernelInjector.injectKey(keyCode);
-        } catch (Exception e) {
-            System.err.println("injectKey failed: " + e.getMessage());
-        }
+        long now = SystemClock.uptimeMillis();
+        KeyEvent downEvent = new KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, 0,
+                KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD);
+        KeyEvent upEvent = new KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0, 0,
+                KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD);
+        injectEvent(downEvent);
+        try { Thread.sleep(50); } catch (InterruptedException ignored) {}
+        injectEvent(upEvent);
     }
 
     static String findTouchScreenNode() {
@@ -348,10 +377,6 @@ public class Main {
             sendEvent(EV_KEY, BTN_TOUCH, 0);
             sendEvent(EV_SYN, SYN_REPORT, 0);
             out.flush();
-        }
-
-        public void injectKey(int keyCode) throws Exception {
-            System.err.println("WARNING: injectKey is blocked in pure kernel mode. Use gestures (swipe) for Back/Home.");
         }
     }
 }
