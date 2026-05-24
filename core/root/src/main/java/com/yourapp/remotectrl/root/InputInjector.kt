@@ -18,6 +18,7 @@ class InputInjector(private val context: Context) {
         private const val SOCKET_NAME = "supercontroler_input"
         private const val PAYLOAD_JAR = "input-server.jar"
         private const val TARGET_PATH = "/data/local/tmp/input-server.jar"
+        private const val TARGET_SO_PATH = "/data/local/tmp/libuinput-ctrl.so"
     }
 
     private val rootAvailable: Boolean
@@ -47,16 +48,33 @@ class InputInjector(private val context: Context) {
                 }
             }
 
-            Shell.cmd(
+            val soFile = File(context.applicationInfo.nativeLibraryDir, "libuinput-ctrl.so")
+            val soExists = soFile.exists()
+            Log.i(TAG, "Native SO exists: $soExists at ${soFile.absolutePath}")
+
+            val commands = mutableListOf(
                 "cp ${cacheFile.absolutePath} $TARGET_PATH",
                 "chmod 777 $TARGET_PATH"
-            ).exec()
+            )
+            if (soExists) {
+                commands.add("cp ${soFile.absolutePath} $TARGET_SO_PATH")
+                commands.add("chmod 777 $TARGET_SO_PATH")
+            }
+
+            Shell.cmd(*commands.toTypedArray()).exec()
 
             Shell.cmd("pkill -f 'com.yourapp.remotectrl.input.Main' 2>/dev/null || true").exec()
             Thread.sleep(200)
 
-            // 【修复8】使用 nohup 保证进程脱离会话独立运行
-            val cmd = "(app_process -Djava.class.path=$TARGET_PATH /system/bin com.yourapp.remotectrl.input.Main $sessionToken > /dev/null 2>&1 &)"
+            val displayMetrics = context.resources.displayMetrics
+            val screenWidth = displayMetrics.widthPixels
+            val screenHeight = displayMetrics.heightPixels
+
+            val cmd = if (soExists) {
+                "(app_process -Djava.class.path=$TARGET_PATH /system/bin com.yourapp.remotectrl.input.Main $sessionToken $screenWidth $screenHeight > /dev/null 2>&1 &)"
+            } else {
+                "(app_process -Djava.class.path=$TARGET_PATH /system/bin com.yourapp.remotectrl.input.Main $sessionToken > /dev/null 2>&1 &)"
+            }
             Shell.cmd(cmd).submit()
 
             Thread {
