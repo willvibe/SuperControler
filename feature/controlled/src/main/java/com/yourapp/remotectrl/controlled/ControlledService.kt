@@ -537,7 +537,7 @@ class ControlledService : Service() {
         webRtcClient?.startScreenCapture(mediaProjectionIntent, encW, encH, 30)
 
         Log.i(TAG, "WebRtcClient initialized and screen capture started immediately")
-        updateNotification("已连接(WebRTC)")
+        updateNotification("WebRTC媒体已就绪, 穿透中...")
     }
 
     private fun startScreenCaptureIfPending() {
@@ -565,6 +565,7 @@ class ControlledService : Service() {
                 val oldClient = webRtcClient
                 webRtcClient = null
                 videoCaptureStarted = false
+                projectionRequestInProgress = false
                 pendingIceCandidates.clear()
                 pendingSdpFromId = null
                 pendingSdpType = null
@@ -577,9 +578,12 @@ class ControlledService : Service() {
                         Log.e(TAG, "Error disposing old WebRtcClient: ${e.message}")
                     }
                 }
-            }
 
-            if (MediaProjectionHelper.hasCachedPermission()) {
+                if (pendingSdpFromId == null) {
+                    pendingSdpFromId = peerId
+                }
+                requestMediaProjection()
+            } else if (MediaProjectionHelper.hasCachedPermission()) {
                 val data = MediaProjectionHelper.getCachedProjectionData()
                 if (data != null) {
                     Log.i(TAG, "onPeerConnected: re-initializing WebRtcClient with cached MediaProjection")
