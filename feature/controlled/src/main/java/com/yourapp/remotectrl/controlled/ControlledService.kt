@@ -78,6 +78,9 @@ class ControlledService : Service() {
     private var videoCaptureStarted = false
 
     @Volatile
+    private var isConnecting = false
+
+    @Volatile
     private var projectionRequestInProgress = false
 
     private var wakeLock: PowerManager.WakeLock? = null
@@ -512,9 +515,11 @@ class ControlledService : Service() {
             override fun onConnectionStateChange(connected: Boolean) {
                 Log.i(TAG, "WebRTC connection state changed: connected=$connected")
                 if (connected) {
+                    isConnecting = false
                     wakeUpScreenIfNeeded()
                     sendScreenInfo()
                 } else {
+                    isConnecting = false
                     Log.i(TAG, "WebRTC disconnected, resetting state (keeping screen on)")
                     webRtcClient?.dispose()
                     webRtcClient = null
@@ -560,12 +565,17 @@ class ControlledService : Service() {
         signalingClient.onPeerConnected = { peerId, role ->
             Log.i(TAG, "onPeerConnected: peerId=$peerId, role=$role")
 
-            if (webRtcClient != null) {
+            if (isConnecting) {
+                Log.i(TAG, "Already connecting, ignoring punch_info to prevent race condition")
+            } else if (webRtcClient != null && webRtcClient!!.peerId == peerId) {
+                Log.i(TAG, "Already connected to $peerId, ignoring duplicate punch_info")
+            } else if (webRtcClient != null) {
                 Log.w(TAG, "Detected controller reconnect, disposing old WebRTC instance to prevent native crash")
                 val oldClient = webRtcClient
                 webRtcClient = null
                 videoCaptureStarted = false
                 projectionRequestInProgress = false
+                isConnecting = true
                 pendingIceCandidates.clear()
                 pendingSdpFromId = null
                 pendingSdpType = null
@@ -584,6 +594,7 @@ class ControlledService : Service() {
                 }
                 requestMediaProjection()
             } else if (MediaProjectionHelper.hasCachedPermission()) {
+                isConnecting = true
                 val data = MediaProjectionHelper.getCachedProjectionData()
                 if (data != null) {
                     Log.i(TAG, "onPeerConnected: re-initializing WebRtcClient with cached MediaProjection")
@@ -603,6 +614,7 @@ class ControlledService : Service() {
 
         signalingClient.onSdpOffer = lambda@{ fromId, type, sdp ->
             Log.i(TAG, "onSdpOffer: fromId=$fromId, sdpLength=${sdp.length}")
+            isConnecting = true
             if (webRtcClient == null) {
                 if (MediaProjectionHelper.hasCachedPermission()) {
                     val data = MediaProjectionHelper.getCachedProjectionData()
